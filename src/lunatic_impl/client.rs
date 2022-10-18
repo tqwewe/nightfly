@@ -1,5 +1,6 @@
 #[cfg(any(feature = "native-tls", feature = "__rustls",))]
 use std::any::Any;
+use std::io::Write;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,25 +9,22 @@ use std::{fmt, str};
 
 use bytes::Bytes;
 use http::header::{
-    Entry, HeaderMap, HeaderValue, ACCEPT, ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH,
+    self, Entry, HeaderMap, HeaderValue, ACCEPT, ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_LENGTH,
     CONTENT_TYPE, LOCATION, PROXY_AUTHORIZATION, RANGE, REFERER, TRANSFER_ENCODING, USER_AGENT,
 };
 use http::uri::Scheme;
-use http::Uri;
-use hyper::client::ResponseFuture;
+use http::{Uri, Version};
+use lunatic::net::TcpStream;
 #[cfg(feature = "native-tls-crate")]
 use native_tls_crate::TlsConnector;
-use pin_project_lite::pin_project;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use tokio::time::Sleep;
 
-use log::{debug, trace};
+use lunatic_log::{debug, trace};
+use serde::{Deserialize, Serialize};
 
-use super::decoder::Accepts;
+use super::decoder::{parse_response, Accepts};
+use super::http_stream::HttpStream;
 use super::request::{Request, RequestBuilder};
-use super::response::Response;
+use super::response::HttpResponse;
 use super::Body;
 use crate::connect::{Connector, HttpConnector};
 #[cfg(feature = "cookies")]
@@ -57,7 +55,7 @@ use crate::{IntoUrl, Method, Proxy, StatusCode, Url};
 /// [`Rc`]: std::rc::Rc
 #[derive(Clone)]
 pub struct Client {
-    inner: Arc<ClientRef>,
+    inner: ClientRef,
 }
 
 /// A `ClientBuilder` can be used to create a `Client` with custom configuration.
@@ -367,7 +365,7 @@ impl ClientBuilder {
                                 Ok(_) => valid_count += 1,
                                 Err(err) => {
                                     invalid_count += 1;
-                                    log::warn!(
+                                    lunatic_log::warn!(
                                         "rustls failed to parse DER certificate {:?} {:?}",
                                         &err,
                                         &cert
@@ -461,71 +459,72 @@ impl ClientBuilder {
         };
 
         connector.set_timeout(config.connect_timeout);
-        connector.set_verbose(config.connection_verbose);
+        // connector.set_verbose(config.connection_verbose);
 
-        let mut builder = hyper::Client::builder();
-        if matches!(config.http_version_pref, HttpVersionPref::Http2) {
-            builder.http2_only(true);
-        }
+        let mut builder = Client::builder();
+        // if matches!(config.http_version_pref, HttpVersionPref::Http2) {
+        //     builder.http2_only(true);
+        // }
 
-        if let Some(http2_initial_stream_window_size) = config.http2_initial_stream_window_size {
-            builder.http2_initial_stream_window_size(http2_initial_stream_window_size);
-        }
-        if let Some(http2_initial_connection_window_size) =
-            config.http2_initial_connection_window_size
-        {
-            builder.http2_initial_connection_window_size(http2_initial_connection_window_size);
-        }
-        if config.http2_adaptive_window {
-            builder.http2_adaptive_window(true);
-        }
-        if let Some(http2_max_frame_size) = config.http2_max_frame_size {
-            builder.http2_max_frame_size(http2_max_frame_size);
-        }
-        if let Some(http2_keep_alive_interval) = config.http2_keep_alive_interval {
-            builder.http2_keep_alive_interval(http2_keep_alive_interval);
-        }
-        if let Some(http2_keep_alive_timeout) = config.http2_keep_alive_timeout {
-            builder.http2_keep_alive_timeout(http2_keep_alive_timeout);
-        }
-        if config.http2_keep_alive_while_idle {
-            builder.http2_keep_alive_while_idle(true);
-        }
+        // if let Some(http2_initial_stream_window_size) = config.http2_initial_stream_window_size {
+        //     builder.http2_initial_stream_window_size(http2_initial_stream_window_size);
+        // }
+        // if let Some(http2_initial_connection_window_size) =
+        //     config.http2_initial_connection_window_size
+        // {
+        //     builder.http2_initial_connection_window_size(http2_initial_connection_window_size);
+        // }
+        // if config.http2_adaptive_window {
+        //     builder.http2_adaptive_window(true);
+        // }
+        // if let Some(http2_max_frame_size) = config.http2_max_frame_size {
+        //     builder.http2_max_frame_size(http2_max_frame_size);
+        // }
+        // if let Some(http2_keep_alive_interval) = config.http2_keep_alive_interval {
+        //     builder.http2_keep_alive_interval(http2_keep_alive_interval);
+        // }
+        // if let Some(http2_keep_alive_timeout) = config.http2_keep_alive_timeout {
+        //     builder.http2_keep_alive_timeout(http2_keep_alive_timeout);
+        // }
+        // if config.http2_keep_alive_while_idle {
+        //     builder.http2_keep_alive_while_idle(true);
+        // }
 
-        builder.pool_idle_timeout(config.pool_idle_timeout);
-        builder.pool_max_idle_per_host(config.pool_max_idle_per_host);
-        connector.set_keepalive(config.tcp_keepalive);
+        // builder.pool_idle_timeout(config.pool_idle_timeout);
+        // builder.pool_max_idle_per_host(config.pool_max_idle_per_host);
+        // connector.set_keepalive(config.tcp_keepalive);
 
-        if config.http09_responses {
-            builder.http09_responses(true);
-        }
+        // if config.http09_responses {
+        //     builder.http09_responses(true);
+        // }
 
-        if config.http1_title_case_headers {
-            builder.http1_title_case_headers(true);
-        }
+        // if config.http1_title_case_headers {
+        //     builder.http1_title_case_headers(true);
+        // }
 
-        if config.http1_allow_obsolete_multiline_headers_in_responses {
-            builder.http1_allow_obsolete_multiline_headers_in_responses(true);
-        }
+        // if config.http1_allow_obsolete_multiline_headers_in_responses {
+        //     builder.http1_allow_obsolete_multiline_headers_in_responses(true);
+        // }
 
-        let hyper_client = builder.build(connector);
+        // let hyper_client = builder.build(connector);
 
         let proxies_maybe_http_auth = proxies.iter().any(|p| p.maybe_has_http_auth());
 
         Ok(Client {
-            inner: Arc::new(ClientRef {
+            inner: ClientRef {
                 accepts: config.accepts,
                 #[cfg(feature = "cookies")]
                 cookie_store: config.cookie_store,
-                hyper: hyper_client,
                 headers: config.headers,
-                redirect_policy: config.redirect_policy,
+                // redirect_policy: config.redirect_policy,
                 referer: config.referer,
                 request_timeout: config.timeout,
                 proxies,
                 proxies_maybe_http_auth,
                 https_only: config.https_only,
-            }),
+                // stream: ,
+                stream: None,
+            },
         })
     }
 
@@ -536,7 +535,7 @@ impl ClientBuilder {
     /// # Example
     ///
     /// ```rust
-    /// # async fn doc() -> Result<(), reqwest::Error> {
+    /// # fn doc() -> Result<(), reqwest::Error> {
     /// // Name your user agent after your app?
     /// static APP_USER_AGENT: &str = concat!(
     ///     env!("CARGO_PKG_NAME"),
@@ -547,7 +546,7 @@ impl ClientBuilder {
     /// let client = reqwest::Client::builder()
     ///     .user_agent(APP_USER_AGENT)
     ///     .build()?;
-    /// let res = client.get("https://www.rust-lang.org").send().await?;
+    /// let res = client.get("https://www.rust-lang.org").send();
     /// # Ok(())
     /// # }
     /// ```
@@ -572,7 +571,7 @@ impl ClientBuilder {
     ///
     /// ```rust
     /// use reqwest::header;
-    /// # async fn doc() -> Result<(), reqwest::Error> {
+    /// # fn doc() -> Result<(), reqwest::Error> {
     /// let mut headers = header::HeaderMap::new();
     /// headers.insert("X-MY-HEADER", header::HeaderValue::from_static("value"));
     ///
@@ -585,7 +584,7 @@ impl ClientBuilder {
     /// let client = reqwest::Client::builder()
     ///     .default_headers(headers)
     ///     .build()?;
-    /// let res = client.get("https://www.rust-lang.org").send().await?;
+    /// let res = client.get("https://www.rust-lang.org").send();
     /// # Ok(())
     /// # }
     /// ```
@@ -594,7 +593,7 @@ impl ClientBuilder {
     ///
     /// ```rust
     /// use reqwest::header;
-    /// # async fn doc() -> Result<(), reqwest::Error> {
+    /// # fn doc() -> Result<(), reqwest::Error> {
     /// let mut headers = header::HeaderMap::new();
     /// headers.insert("X-MY-HEADER", header::HeaderValue::from_static("value"));
     ///
@@ -606,7 +605,7 @@ impl ClientBuilder {
     ///     .get("https://www.rust-lang.org")
     ///     .header("X-MY-HEADER", "new_value")
     ///     .send()
-    ///     .await?;
+    ///     ;
     /// # Ok(())
     /// # }
     /// ```
@@ -1342,12 +1341,40 @@ impl ClientBuilder {
     }
 }
 
-type HyperClient = hyper::Client<Connector, super::body::ImplStream>;
-
 impl Default for Client {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// encode request as http text
+pub fn request_to_vec(
+    method: Method,
+    uri: Url,
+    mut headers: HeaderMap,
+    body: Option<Body>,
+    version: Version,
+) -> Vec<u8> {
+    let mut request_buffer: Vec<u8> = Vec::new();
+    if let Some(body) = &body {
+        headers.append(header::CONTENT_LENGTH, HeaderValue::from(body.len()));
+    }
+
+    // writing status line
+    request_buffer.extend(format!("{} {} {:?}\r\n", method, uri, version,).as_bytes());
+    // writing headers
+    for (key, value) in headers.iter() {
+        if let Ok(value) = String::from_utf8(value.as_ref().to_vec()) {
+            request_buffer.extend(format!("{}: {}\r\n", key, value).as_bytes());
+        }
+    }
+    // separator between header and data
+    request_buffer.extend("\r\n".as_bytes());
+    if let Some(body) = body {
+        request_buffer.extend(body.inner());
+    }
+
+    request_buffer
 }
 
 impl Client {
@@ -1450,22 +1477,19 @@ impl Client {
     ///
     /// This method fails if there was an error while sending request,
     /// redirect loop was detected or redirect limit was exhausted.
-    pub fn execute(
-        &self,
-        request: Request,
-    ) -> impl Future<Output = Result<Response, crate::Error>> {
+    pub fn execute(&mut self, request: Request) -> Result<HttpResponse, crate::Error> {
         self.execute_request(request)
     }
 
-    pub(super) fn execute_request(&self, req: Request) -> Pending {
+    pub(super) fn execute_request(&mut self, req: Request) -> Result<HttpResponse, crate::Error> {
         let (method, url, mut headers, body, timeout, version) = req.pieces();
         if url.scheme() != "http" && url.scheme() != "https" {
-            return Pending::new_err(error::url_bad_scheme(url));
+            return Err(error::url_bad_scheme(url));
         }
 
         // check if we're in https_only mode and check the scheme of the current URL
         if self.inner.https_only && url.scheme() != "https" {
-            return Pending::new_err(error::url_bad_scheme(url));
+            return Err(error::url_bad_scheme(url));
         }
 
         // insert default headers in the request headers
@@ -1496,48 +1520,34 @@ impl Client {
 
         let uri = expect_uri(&url);
 
-        let (reusable, body) = match body {
-            Some(body) => {
-                let (reusable, body) = body.try_reuse();
-                (Some(reusable), body)
-            }
-            None => (None, Body::empty()),
-        };
+        // let (reusable, body) = match body {
+        //     Some(body) => {
+        //         let (reusable, body) = body.try_reuse();
+        //         (Some(reusable), body)
+        //     }
+        //     None => (None, Body::empty()),
+        // };
 
         self.proxy_auth(&uri, &mut headers);
 
-        let mut req = hyper::Request::builder()
-            .method(method.clone())
-            .uri(uri)
-            .version(version)
-            .body(body.into_stream())
-            .expect("valid request parts");
+        let timeout = timeout.or(self.inner.request_timeout);
 
-        let timeout = timeout
-            .or(self.inner.request_timeout)
-            .map(tokio::time::sleep)
-            .map(Box::pin);
+        // *req.headers_mut() = headers.clone();
 
-        *req.headers_mut() = headers.clone();
+        // let in_flight = self.inner.hyper.request(req);
 
-        let in_flight = self.inner.hyper.request(req);
+        let mut encoded = request_to_vec(method, url.clone(), headers, body, version);
 
-        Pending {
-            inner: PendingInner::Request(PendingRequest {
-                method,
-                url,
-                headers,
-                body: reusable,
+        let mut stream = self.inner.ensure_connection(url.clone())?;
 
-                urls: Vec::new(),
+        stream.write_all(&mut encoded).unwrap();
 
-                retry_count: 0,
+        let response_buffer = Vec::new();
+        println!("WROTE TO STREAM");
 
-                client: self.inner.clone(),
-
-                in_flight,
-                timeout,
-            }),
+        match parse_response(response_buffer, stream.clone(), url) {
+            Ok(res) => Ok(res),
+            Err(e) => unimplemented!(),
         }
     }
 
@@ -1574,34 +1584,6 @@ impl fmt::Debug for Client {
         let mut builder = f.debug_struct("Client");
         self.inner.fmt_fields(&mut builder);
         builder.finish()
-    }
-}
-
-impl tower_service::Service<Request> for Client {
-    type Response = Response;
-    type Error = crate::Error;
-    type Future = Pending;
-
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: Request) -> Self::Future {
-        self.execute_request(req)
-    }
-}
-
-impl tower_service::Service<Request> for &'_ Client {
-    type Response = Response;
-    type Error = crate::Error;
-    type Future = Pending;
-
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: Request) -> Self::Future {
-        self.execute_request(req)
     }
 }
 
@@ -1706,21 +1688,30 @@ impl Config {
     }
 }
 
+#[derive(Clone)]
 struct ClientRef {
     accepts: Accepts,
     #[cfg(feature = "cookies")]
     cookie_store: Option<Arc<dyn cookie::CookieStore>>,
     headers: HeaderMap,
-    hyper: HyperClient,
-    redirect_policy: redirect::Policy,
+    // redirect_policy: redirect::Policy,
     referer: bool,
     request_timeout: Option<Duration>,
     proxies: Arc<Vec<Proxy>>,
     proxies_maybe_http_auth: bool,
     https_only: bool,
+    stream: Option<HttpStream>,
 }
 
 impl ClientRef {
+    pub fn ensure_connection(&mut self, uri: Url) -> crate::Result<HttpStream> {
+        if let Some(stream) = &self.stream {
+            return Ok(stream.clone());
+        }
+        println!("GOING TO CONNECT WITH URI {:?}", uri.as_str());
+        HttpStream::connect(format!("{}:{}", uri.host().unwrap(), uri.port().unwrap()))
+    }
+
     fn fmt_fields(&self, f: &mut fmt::DebugStruct<'_, '_>) {
         // Instead of deriving Debug, only print fields when their output
         // would provide relevant or interesting data.
@@ -1738,9 +1729,9 @@ impl ClientRef {
             f.field("proxies", &self.proxies);
         }
 
-        if !self.redirect_policy.is_default() {
-            f.field("redirect_policy", &self.redirect_policy);
-        }
+        // if !self.redirect_policy.is_default() {
+        //     f.field("redirect_policy", &self.redirect_policy);
+        // }
 
         if self.referer {
             f.field("referer", &true);
@@ -1754,303 +1745,283 @@ impl ClientRef {
     }
 }
 
-pin_project! {
-    pub struct Pending {
-        #[pin]
-        inner: PendingInner,
-    }
-}
+// enum PendingInner {
+//     Request(PendingRequest),
+//     Error(Option<crate::Error>),
+// }
 
-enum PendingInner {
-    Request(PendingRequest),
-    Error(Option<crate::Error>),
-}
+// pin_project! {
+//     struct PendingRequest {
+//         method: Method,
+//         url: Url,
+//         headers: HeaderMap,
+//         body: Option<Option<Bytes>>,
 
-pin_project! {
-    struct PendingRequest {
-        method: Method,
-        url: Url,
-        headers: HeaderMap,
-        body: Option<Option<Bytes>>,
+//         urls: Vec<Url>,
 
-        urls: Vec<Url>,
+//         retry_count: usize,
 
-        retry_count: usize,
+//         client: Arc<ClientRef>,
 
-        client: Arc<ClientRef>,
+//         #[pin]
+//         in_flight: ResponseFuture,
+//         #[pin]
+//         timeout: Option<Pin<Box<Sleep>>>,
+//     }
+// }
 
-        #[pin]
-        in_flight: ResponseFuture,
-        #[pin]
-        timeout: Option<Pin<Box<Sleep>>>,
-    }
-}
+// impl PendingRequest {
+//     fn in_flight(self: Pin<&mut Self>) -> Pin<&mut ResponseFuture> {
+//         self.project().in_flight
+//     }
 
-impl PendingRequest {
-    fn in_flight(self: Pin<&mut Self>) -> Pin<&mut ResponseFuture> {
-        self.project().in_flight
-    }
+//     fn timeout(self: Pin<&mut Self>) -> Pin<&mut Option<Pin<Box<Sleep>>>> {
+//         self.project().timeout
+//     }
 
-    fn timeout(self: Pin<&mut Self>) -> Pin<&mut Option<Pin<Box<Sleep>>>> {
-        self.project().timeout
-    }
+//     fn urls(self: Pin<&mut Self>) -> &mut Vec<Url> {
+//         self.project().urls
+//     }
 
-    fn urls(self: Pin<&mut Self>) -> &mut Vec<Url> {
-        self.project().urls
-    }
+//     fn headers(self: Pin<&mut Self>) -> &mut HeaderMap {
+//         self.project().headers
+//     }
 
-    fn headers(self: Pin<&mut Self>) -> &mut HeaderMap {
-        self.project().headers
-    }
+//     fn retry_error(mut self: Pin<&mut Self>, err: &(dyn std::error::Error + 'static)) -> bool {
+//         if !is_retryable_error(err) {
+//             return false;
+//         }
 
-    fn retry_error(mut self: Pin<&mut Self>, err: &(dyn std::error::Error + 'static)) -> bool {
-        if !is_retryable_error(err) {
-            return false;
-        }
+//         trace!("can retry {:?}", err);
 
-        trace!("can retry {:?}", err);
+//         let body = match self.body {
+//             Some(Some(ref body)) => Body::reusable(body.clone()),
+//             Some(None) => {
+//                 debug!("error was retryable, but body not reusable");
+//                 return false;
+//             }
+//             None => Body::empty(),
+//         };
 
-        let body = match self.body {
-            Some(Some(ref body)) => Body::reusable(body.clone()),
-            Some(None) => {
-                debug!("error was retryable, but body not reusable");
-                return false;
-            }
-            None => Body::empty(),
-        };
+//         if self.retry_count >= 2 {
+//             trace!("retry count too high");
+//             return false;
+//         }
+//         self.retry_count += 1;
 
-        if self.retry_count >= 2 {
-            trace!("retry count too high");
-            return false;
-        }
-        self.retry_count += 1;
+//         let uri = expect_uri(&self.url);
+//         let mut req = Request::builder()
+//             .method(self.method.clone())
+//             .uri(uri)
+//             .body(body.into_stream())
+//             .expect("valid request parts");
 
-        let uri = expect_uri(&self.url);
-        let mut req = hyper::Request::builder()
-            .method(self.method.clone())
-            .uri(uri)
-            .body(body.into_stream())
-            .expect("valid request parts");
+//         *req.headers_mut() = self.headers.clone();
 
-        *req.headers_mut() = self.headers.clone();
+//         *self.as_mut().in_flight().get_mut() = self.client.hyper.request(req);
 
-        *self.as_mut().in_flight().get_mut() = self.client.hyper.request(req);
+//         true
+//     }
+// }
 
-        true
-    }
-}
+// fn is_retryable_error(err: &(dyn std::error::Error + 'static)) -> bool {
+//     if let Some(cause) = err.source() {
+//         if let Some(err) = cause.downcast_ref::<h2::Error>() {
+//             // They sent us a graceful shutdown, try with a new connection!
+//             return err.is_go_away()
+//                 && err.is_remote()
+//                 && err.reason() == Some(h2::Reason::NO_ERROR);
+//         }
+//     }
+//     false
+// }
 
-fn is_retryable_error(err: &(dyn std::error::Error + 'static)) -> bool {
-    if let Some(cause) = err.source() {
-        if let Some(err) = cause.downcast_ref::<h2::Error>() {
-            // They sent us a graceful shutdown, try with a new connection!
-            return err.is_go_away()
-                && err.is_remote()
-                && err.reason() == Some(h2::Reason::NO_ERROR);
-        }
-    }
-    false
-}
+// impl Pending {
+//     pub(super) fn new_err(err: crate::Error) -> Pending {
+//         Pending {
+//             inner: PendingInner::Error(Some(err)),
+//         }
+//     }
 
-impl Pending {
-    pub(super) fn new_err(err: crate::Error) -> Pending {
-        Pending {
-            inner: PendingInner::Error(Some(err)),
-        }
-    }
+//     fn inner(self: Pin<&mut Self>) -> Pin<&mut PendingInner> {
+//         self.project().inner
+//     }
+// }
 
-    fn inner(self: Pin<&mut Self>) -> Pin<&mut PendingInner> {
-        self.project().inner
-    }
-}
+// impl Future for Pending {
+//     type Output = Result<Response, crate::Error>;
 
-impl Future for Pending {
-    type Output = Result<Response, crate::Error>;
+//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         let inner = self.inner();
+//         match inner.get_mut() {
+//             PendingInner::Request(ref mut req) => Pin::new(req).poll(cx),
+//             PendingInner::Error(ref mut err) => Poll::Ready(Err(err
+//                 .take()
+//                 .expect("Pending error polled more than once"))),
+//         }
+//     }
+// }
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let inner = self.inner();
-        match inner.get_mut() {
-            PendingInner::Request(ref mut req) => Pin::new(req).poll(cx),
-            PendingInner::Error(ref mut err) => Poll::Ready(Err(err
-                .take()
-                .expect("Pending error polled more than once"))),
-        }
-    }
-}
+// impl Future for PendingRequest {
+//     type Output = Result<Response, crate::Error>;
 
-impl Future for PendingRequest {
-    type Output = Result<Response, crate::Error>;
+//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         if let Some(delay) = self.as_mut().timeout().as_mut().as_pin_mut() {
+//             if let Poll::Ready(()) = delay.poll(cx) {
+//                 return Poll::Ready(Err(
+//                     crate::error::request(crate::error::TimedOut).with_url(self.url.clone())
+//                 ));
+//             }
+//         }
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Some(delay) = self.as_mut().timeout().as_mut().as_pin_mut() {
-            if let Poll::Ready(()) = delay.poll(cx) {
-                return Poll::Ready(Err(
-                    crate::error::request(crate::error::TimedOut).with_url(self.url.clone())
-                ));
-            }
-        }
+//         loop {
+//             let res = match self.as_mut().in_flight().as_mut().poll(cx) {
+//                 Poll::Ready(Err(e)) => {
+//                     if self.as_mut().retry_error(&e) {
+//                         continue;
+//                     }
+//                     return Poll::Ready(Err(crate::error::request(e).with_url(self.url.clone())));
+//                 }
+//                 Poll::Ready(Ok(res)) => res,
+//                 Poll::Pending => return Poll::Pending,
+//             };
 
-        loop {
-            let res = match self.as_mut().in_flight().as_mut().poll(cx) {
-                Poll::Ready(Err(e)) => {
-                    if self.as_mut().retry_error(&e) {
-                        continue;
-                    }
-                    return Poll::Ready(Err(crate::error::request(e).with_url(self.url.clone())));
-                }
-                Poll::Ready(Ok(res)) => res,
-                Poll::Pending => return Poll::Pending,
-            };
+//             #[cfg(feature = "cookies")]
+//             {
+//                 if let Some(ref cookie_store) = self.client.cookie_store {
+//                     let mut cookies =
+//                         cookie::extract_response_cookie_headers(&res.headers()).peekable();
+//                     if cookies.peek().is_some() {
+//                         cookie_store.set_cookies(&mut cookies, &self.url);
+//                     }
+//                 }
+//             }
+//             let should_redirect = match res.status() {
+//                 StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND | StatusCode::SEE_OTHER => {
+//                     self.body = None;
+//                     for header in &[
+//                         TRANSFER_ENCODING,
+//                         CONTENT_ENCODING,
+//                         CONTENT_TYPE,
+//                         CONTENT_LENGTH,
+//                     ] {
+//                         self.headers.remove(header);
+//                     }
 
-            #[cfg(feature = "cookies")]
-            {
-                if let Some(ref cookie_store) = self.client.cookie_store {
-                    let mut cookies =
-                        cookie::extract_response_cookie_headers(&res.headers()).peekable();
-                    if cookies.peek().is_some() {
-                        cookie_store.set_cookies(&mut cookies, &self.url);
-                    }
-                }
-            }
-            let should_redirect = match res.status() {
-                StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND | StatusCode::SEE_OTHER => {
-                    self.body = None;
-                    for header in &[
-                        TRANSFER_ENCODING,
-                        CONTENT_ENCODING,
-                        CONTENT_TYPE,
-                        CONTENT_LENGTH,
-                    ] {
-                        self.headers.remove(header);
-                    }
+//                     match self.method {
+//                         Method::GET | Method::HEAD => {}
+//                         _ => {
+//                             self.method = Method::GET;
+//                         }
+//                     }
+//                     true
+//                 }
+//                 StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT => {
+//                     match self.body {
+//                         Some(Some(_)) | None => true,
+//                         Some(None) => false,
+//                     }
+//                 }
+//                 _ => false,
+//             };
+//             if should_redirect {
+//                 let loc = res.headers().get(LOCATION).and_then(|val| {
+//                     let loc = (|| -> Option<Url> {
+//                         // Some sites may send a utf-8 Location header,
+//                         // even though we're supposed to treat those bytes
+//                         // as opaque, we'll check specifically for utf8.
+//                         self.url.join(str::from_utf8(val.as_bytes()).ok()?).ok()
+//                     })();
 
-                    match self.method {
-                        Method::GET | Method::HEAD => {}
-                        _ => {
-                            self.method = Method::GET;
-                        }
-                    }
-                    true
-                }
-                StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT => {
-                    match self.body {
-                        Some(Some(_)) | None => true,
-                        Some(None) => false,
-                    }
-                }
-                _ => false,
-            };
-            if should_redirect {
-                let loc = res.headers().get(LOCATION).and_then(|val| {
-                    let loc = (|| -> Option<Url> {
-                        // Some sites may send a utf-8 Location header,
-                        // even though we're supposed to treat those bytes
-                        // as opaque, we'll check specifically for utf8.
-                        self.url.join(str::from_utf8(val.as_bytes()).ok()?).ok()
-                    })();
+//                     // Check that the `url` is also a valid `http::Uri`.
+//                     //
+//                     // If not, just log it and skip the redirect.
+//                     let loc = loc.and_then(|url| {
+//                         if try_uri(&url).is_some() {
+//                             Some(url)
+//                         } else {
+//                             None
+//                         }
+//                     });
 
-                    // Check that the `url` is also a valid `http::Uri`.
-                    //
-                    // If not, just log it and skip the redirect.
-                    let loc = loc.and_then(|url| {
-                        if try_uri(&url).is_some() {
-                            Some(url)
-                        } else {
-                            None
-                        }
-                    });
+//                     if loc.is_none() {
+//                         debug!("Location header had invalid URI: {:?}", val);
+//                     }
+//                     loc
+//                 });
+//                 if let Some(loc) = loc {
+//                     if self.client.referer {
+//                         if let Some(referer) = make_referer(&loc, &self.url) {
+//                             self.headers.insert(REFERER, referer);
+//                         }
+//                     }
+//                     let url = self.url.clone();
+//                     self.as_mut().urls().push(url);
+//                     let action = self
+//                         .client
+//                         .redirect_policy
+//                         .check(res.status(), &loc, &self.urls);
 
-                    if loc.is_none() {
-                        debug!("Location header had invalid URI: {:?}", val);
-                    }
-                    loc
-                });
-                if let Some(loc) = loc {
-                    if self.client.referer {
-                        if let Some(referer) = make_referer(&loc, &self.url) {
-                            self.headers.insert(REFERER, referer);
-                        }
-                    }
-                    let url = self.url.clone();
-                    self.as_mut().urls().push(url);
-                    let action = self
-                        .client
-                        .redirect_policy
-                        .check(res.status(), &loc, &self.urls);
+//                     match action {
+//                         redirect::ActionKind::Follow => {
+//                             debug!("redirecting '{}' to '{}'", self.url, loc);
 
-                    match action {
-                        redirect::ActionKind::Follow => {
-                            debug!("redirecting '{}' to '{}'", self.url, loc);
+//                             if self.client.https_only && loc.scheme() != "https" {
+//                                 return Poll::Ready(Err(error::redirect(
+//                                     error::url_bad_scheme(loc.clone()),
+//                                     loc,
+//                                 )));
+//                             }
 
-                            if self.client.https_only && loc.scheme() != "https" {
-                                return Poll::Ready(Err(error::redirect(
-                                    error::url_bad_scheme(loc.clone()),
-                                    loc,
-                                )));
-                            }
+//                             self.url = loc;
+//                             let mut headers =
+//                                 std::mem::replace(self.as_mut().headers(), HeaderMap::new());
 
-                            self.url = loc;
-                            let mut headers =
-                                std::mem::replace(self.as_mut().headers(), HeaderMap::new());
+//                             remove_sensitive_headers(&mut headers, &self.url, &self.urls);
+//                             let uri = expect_uri(&self.url);
+//                             let body = match self.body {
+//                                 Some(Some(ref body)) => Body::reusable(body.clone()),
+//                                 _ => Body::empty(),
+//                             };
+//                             let mut req = hyper::Request::builder()
+//                                 .method(self.method.clone())
+//                                 .uri(uri.clone())
+//                                 .body(body.into_stream())
+//                                 .expect("valid request parts");
 
-                            remove_sensitive_headers(&mut headers, &self.url, &self.urls);
-                            let uri = expect_uri(&self.url);
-                            let body = match self.body {
-                                Some(Some(ref body)) => Body::reusable(body.clone()),
-                                _ => Body::empty(),
-                            };
-                            let mut req = hyper::Request::builder()
-                                .method(self.method.clone())
-                                .uri(uri.clone())
-                                .body(body.into_stream())
-                                .expect("valid request parts");
+//                             // Add cookies from the cookie store.
+//                             #[cfg(feature = "cookies")]
+//                             {
+//                                 if let Some(ref cookie_store) = self.client.cookie_store {
+//                                     add_cookie_header(&mut headers, &**cookie_store, &self.url);
+//                                 }
+//                             }
 
-                            // Add cookies from the cookie store.
-                            #[cfg(feature = "cookies")]
-                            {
-                                if let Some(ref cookie_store) = self.client.cookie_store {
-                                    add_cookie_header(&mut headers, &**cookie_store, &self.url);
-                                }
-                            }
+//                             *req.headers_mut() = headers.clone();
+//                             std::mem::swap(self.as_mut().headers(), &mut headers);
+//                             *self.as_mut().in_flight().get_mut() = self.client.hyper.request(req);
+//                             continue;
+//                         }
+//                         redirect::ActionKind::Stop => {
+//                             debug!("redirect policy disallowed redirection to '{}'", loc);
+//                         }
+//                         redirect::ActionKind::Error(err) => {
+//                             return Poll::Ready(Err(crate::error::redirect(err, self.url.clone())));
+//                         }
+//                     }
+//                 }
+//             }
 
-                            *req.headers_mut() = headers.clone();
-                            std::mem::swap(self.as_mut().headers(), &mut headers);
-                            *self.as_mut().in_flight().get_mut() = self.client.hyper.request(req);
-                            continue;
-                        }
-                        redirect::ActionKind::Stop => {
-                            debug!("redirect policy disallowed redirection to '{}'", loc);
-                        }
-                        redirect::ActionKind::Error(err) => {
-                            return Poll::Ready(Err(crate::error::redirect(err, self.url.clone())));
-                        }
-                    }
-                }
-            }
-
-            let res = Response::new(
-                res,
-                self.url.clone(),
-                self.client.accepts,
-                self.timeout.take(),
-            );
-            return Poll::Ready(Ok(res));
-        }
-    }
-}
-
-impl fmt::Debug for Pending {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.inner {
-            PendingInner::Request(ref req) => f
-                .debug_struct("Pending")
-                .field("method", &req.method)
-                .field("url", &req.url)
-                .finish(),
-            PendingInner::Error(ref err) => f.debug_struct("Pending").field("error", err).finish(),
-        }
-    }
-}
+//             let res = Response::new(
+//                 res,
+//                 self.url.clone(),
+//                 self.client.accepts,
+//                 self.timeout.take(),
+//             );
+//             return Poll::Ready(Ok(res));
+//         }
+//     }
+// }
 
 fn make_referer(next: &Url, previous: &Url) -> Option<HeaderValue> {
     if next.scheme() == "http" && previous.scheme() == "https" {
@@ -2073,11 +2044,11 @@ fn add_cookie_header(headers: &mut HeaderMap, cookie_store: &dyn cookie::CookieS
 
 #[cfg(test)]
 mod tests {
-    #[tokio::test]
-    async fn execute_request_rejects_invald_urls() {
+    #[lunatic::test]
+    fn execute_request_rejects_invald_urls() {
         let url_str = "hxxps://www.rust-lang.org/";
         let url = url::Url::parse(url_str).unwrap();
-        let result = crate::get(url.clone()).await;
+        let result = crate::get(url.clone());
 
         assert!(result.is_err());
         let err = result.err().unwrap();

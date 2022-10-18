@@ -44,9 +44,9 @@ impl Error {
     /// # Examples
     ///
     /// ```
-    /// # async fn run() {
+    /// # fn run() {
     /// // displays last stop of a redirect loop
-    /// let response = reqwest::get("http://site.with.redirect.loop").await;
+    /// let response = reqwest::get("http://site.with.redirect.loop");
     /// if let Err(e) = response {
     ///     if e.is_redirect() {
     ///         if let Some(final_stop) = e.url() {
@@ -215,20 +215,6 @@ impl StdError for Error {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
-impl From<crate::error::Error> for wasm_bindgen::JsValue {
-    fn from(err: Error) -> wasm_bindgen::JsValue {
-        js_sys::Error::from(err).into()
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-impl From<crate::error::Error> for js_sys::Error {
-    fn from(err: Error) -> js_sys::Error {
-        js_sys::Error::new(&format!("{}", err))
-    }
-}
-
 #[derive(Debug)]
 pub(crate) enum Kind {
     Builder,
@@ -268,12 +254,6 @@ pub(crate) fn status_code(url: Url, status: StatusCode) -> Error {
 
 pub(crate) fn url_bad_scheme(url: Url) -> Error {
     Error::new(Kind::Builder, Some(BadScheme)).with_url(url)
-}
-
-if_wasm! {
-    pub(crate) fn wasm(js_val: wasm_bindgen::JsValue) -> BoxError {
-        format!("{:?}", js_val).into()
-    }
 }
 
 pub(crate) fn upgrade<E: Into<BoxError>>(e: E) -> Error {

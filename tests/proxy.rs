@@ -5,7 +5,7 @@ use support::*;
 use std::env;
 
 #[tokio::test]
-async fn http_proxy() {
+fn http_proxy() {
     let url = "http://hyper.rs/prox";
     let server = server::http(move |req| {
         assert_eq!(req.method(), "GET");
@@ -23,7 +23,6 @@ async fn http_proxy() {
         .unwrap()
         .get(url)
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.url().as_str(), url);
@@ -31,7 +30,7 @@ async fn http_proxy() {
 }
 
 #[tokio::test]
-async fn http_proxy_basic_auth() {
+fn http_proxy_basic_auth() {
     let url = "http://hyper.rs/prox";
     let server = server::http(move |req| {
         assert_eq!(req.method(), "GET");
@@ -57,7 +56,6 @@ async fn http_proxy_basic_auth() {
         .unwrap()
         .get(url)
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.url().as_str(), url);
@@ -65,7 +63,7 @@ async fn http_proxy_basic_auth() {
 }
 
 #[tokio::test]
-async fn http_proxy_basic_auth_parsed() {
+fn http_proxy_basic_auth_parsed() {
     let url = "http://hyper.rs/prox";
     let server = server::http(move |req| {
         assert_eq!(req.method(), "GET");
@@ -87,7 +85,6 @@ async fn http_proxy_basic_auth_parsed() {
         .unwrap()
         .get(url)
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.url().as_str(), url);
@@ -95,7 +92,7 @@ async fn http_proxy_basic_auth_parsed() {
 }
 
 #[tokio::test]
-async fn system_http_proxy_basic_auth_parsed() {
+fn system_http_proxy_basic_auth_parsed() {
     let url = "http://hyper.rs/prox";
     let server = server::http(move |req| {
         assert_eq!(req.method(), "GET");
@@ -123,7 +120,6 @@ async fn system_http_proxy_basic_auth_parsed() {
         .unwrap()
         .get(url)
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.url().as_str(), url);
@@ -137,7 +133,7 @@ async fn system_http_proxy_basic_auth_parsed() {
 }
 
 #[tokio::test]
-async fn test_no_proxy() {
+fn test_no_proxy() {
     let server = server::http(move |req| {
         assert_eq!(req.method(), "GET");
         assert_eq!(req.uri(), "/4");
@@ -155,7 +151,6 @@ async fn test_no_proxy() {
         .unwrap()
         .get(&url)
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.url().as_str(), &url);
@@ -164,7 +159,7 @@ async fn test_no_proxy() {
 
 #[cfg_attr(not(feature = "__internal_proxy_sys_no_cache"), ignore)]
 #[tokio::test]
-async fn test_using_system_proxy() {
+fn test_using_system_proxy() {
     let url = "http://not.a.real.sub.hyper.rs/prox";
     let server = server::http(move |req| {
         assert_eq!(req.method(), "GET");
@@ -183,7 +178,7 @@ async fn test_using_system_proxy() {
     env::set_var("http_proxy", format!("http://{}", server.addr()));
 
     // system proxy is used by default
-    let res = reqwest::get(url).await.unwrap();
+    let res = reqwest::get(url).unwrap();
 
     assert_eq!(res.url().as_str(), url);
     assert_eq!(res.status(), reqwest::StatusCode::OK);
@@ -196,7 +191,7 @@ async fn test_using_system_proxy() {
 }
 
 #[tokio::test]
-async fn http_over_http() {
+fn http_over_http() {
     let url = "http://hyper.rs/prox";
 
     let server = server::http(move |req| {
@@ -215,7 +210,6 @@ async fn http_over_http() {
         .unwrap()
         .get(url)
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.url().as_str(), url);

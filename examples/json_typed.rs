@@ -16,11 +16,10 @@ struct Post {
     user_id: i32,
 }
 
-// This is using the `tokio` runtime. You'll need the following dependency:
+// This is using the `lunatic` runtime
 //
-// `tokio = { version = "1", features = ["full"] }`
-#[tokio::main]
-async fn main() -> Result<(), reqwest::Error> {
+#[lunatic::main]
+fn main() -> Result<(), reqwest::Error> {
     let new_post = Post {
         id: None,
         title: "Reqwest.rs".into(),
@@ -31,9 +30,7 @@ async fn main() -> Result<(), reqwest::Error> {
         .post("https://jsonplaceholder.typicode.com/posts")
         .json(&new_post)
         .send()
-        .await?
-        .json()
-        .await?;
+        .json();
 
     println!("{:#?}", new_post);
     // Post {

@@ -4,11 +4,8 @@
 //! really care about the structure of the JSON and just need to display it or
 //! process it at runtime.
 
-// This is using the `tokio` runtime. You'll need the following dependency:
-//
-// `tokio = { version = "1", features = ["full"] }`
-#[tokio::main]
-async fn main() -> Result<(), reqwest::Error> {
+#[lunatic::main]
+fn main() -> Result<(), reqwest::Error> {
     let echo_json: serde_json::Value = reqwest::Client::new()
         .post("https://jsonplaceholder.typicode.com/posts")
         .json(&serde_json::json!({
@@ -17,9 +14,7 @@ async fn main() -> Result<(), reqwest::Error> {
             "userId": 1
         }))
         .send()
-        .await?
-        .json()
-        .await?;
+        .json();
 
     println!("{:#?}", echo_json);
     // Object(

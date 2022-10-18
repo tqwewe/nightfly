@@ -13,12 +13,10 @@ extern "C" {
 }
 
 #[wasm_bindgen_test]
-async fn simple_example() {
-    let res = reqwest::get("https://hyper.rs")
-        .await
-        .expect("http get example");
+fn simple_example() {
+    let res = reqwest::get("https://hyper.rs").expect("http get example");
     log(&format!("Status: {}", res.status()));
 
-    let body = res.text().await.expect("response to utf-8 text");
+    let body = res.text().expect("response to utf-8 text");
     log(&format!("Body:\n\n{}", body));
 }

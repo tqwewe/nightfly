@@ -6,7 +6,7 @@ use support::*;
 use reqwest::Client;
 
 #[tokio::test]
-async fn auto_headers() {
+fn auto_headers() {
     let server = server::http(move |req| async move {
         assert_eq!(req.method(), "GET");
 
@@ -41,7 +41,6 @@ async fn auto_headers() {
         .unwrap()
         .get(&url)
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.url().as_str(), &url);
@@ -50,7 +49,7 @@ async fn auto_headers() {
 }
 
 #[tokio::test]
-async fn user_agent() {
+fn user_agent() {
     let server = server::http(move |req| async move {
         assert_eq!(req.headers()["user-agent"], "reqwest-test-agent");
         http::Response::default()
@@ -63,14 +62,13 @@ async fn user_agent() {
         .expect("client builder")
         .get(&url)
         .send()
-        .await
         .expect("request");
 
     assert_eq!(res.status(), reqwest::StatusCode::OK);
 }
 
 #[tokio::test]
-async fn response_text() {
+fn response_text() {
     let _ = env_logger::try_init();
 
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
@@ -80,15 +78,14 @@ async fn response_text() {
     let res = client
         .get(&format!("http://{}/text", server.addr()))
         .send()
-        .await
         .expect("Failed to get");
     assert_eq!(res.content_length(), Some(5));
-    let text = res.text().await.expect("Failed to get text");
+    let text = res.text().expect("Failed to get text");
     assert_eq!("Hello", text);
 }
 
 #[tokio::test]
-async fn response_bytes() {
+fn response_bytes() {
     let _ = env_logger::try_init();
 
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
@@ -98,16 +95,15 @@ async fn response_bytes() {
     let res = client
         .get(&format!("http://{}/bytes", server.addr()))
         .send()
-        .await
         .expect("Failed to get");
     assert_eq!(res.content_length(), Some(5));
-    let bytes = res.bytes().await.expect("res.bytes()");
+    let bytes = res.bytes().expect("res.bytes()");
     assert_eq!("Hello", bytes);
 }
 
 #[tokio::test]
 #[cfg(feature = "json")]
-async fn response_json() {
+fn response_json() {
     let _ = env_logger::try_init();
 
     let server = server::http(move |_req| async { http::Response::new("\"Hello\"".into()) });
@@ -117,14 +113,13 @@ async fn response_json() {
     let res = client
         .get(&format!("http://{}/json", server.addr()))
         .send()
-        .await
         .expect("Failed to get");
-    let text = res.json::<String>().await.expect("Failed to get json");
+    let text = res.json::<String>().expect("Failed to get json");
     assert_eq!("Hello", text);
 }
 
 #[tokio::test]
-async fn body_pipe_response() {
+fn body_pipe_response() {
     let _ = env_logger::try_init();
 
     let server = server::http(move |mut req| async move {
@@ -135,7 +130,7 @@ async fn body_pipe_response() {
             assert_eq!(req.headers()["transfer-encoding"], "chunked");
 
             let mut full: Vec<u8> = Vec::new();
-            while let Some(item) = req.body_mut().next().await {
+            while let Some(item) = req.body_mut().next() {
                 full.extend(&*item.unwrap());
             }
 
@@ -150,7 +145,6 @@ async fn body_pipe_response() {
     let res1 = client
         .get(&format!("http://{}/get", server.addr()))
         .send()
-        .await
         .expect("get1");
 
     assert_eq!(res1.status(), reqwest::StatusCode::OK);
@@ -161,14 +155,13 @@ async fn body_pipe_response() {
         .post(&format!("http://{}/pipe", server.addr()))
         .body(res1)
         .send()
-        .await
         .expect("res2");
 
     assert_eq!(res2.status(), reqwest::StatusCode::OK);
 }
 
 #[tokio::test]
-async fn overridden_dns_resolution_with_gai() {
+fn overridden_dns_resolution_with_gai() {
     let _ = env_logger::builder().is_test(true).try_init();
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
 
@@ -183,15 +176,15 @@ async fn overridden_dns_resolution_with_gai() {
         .build()
         .expect("client builder");
     let req = client.get(&url);
-    let res = req.send().await.expect("request");
+    let res = req.send().expect("request");
 
     assert_eq!(res.status(), reqwest::StatusCode::OK);
-    let text = res.text().await.expect("Failed to get text");
+    let text = res.text().expect("Failed to get text");
     assert_eq!("Hello", text);
 }
 
 #[tokio::test]
-async fn overridden_dns_resolution_with_gai_multiple() {
+fn overridden_dns_resolution_with_gai_multiple() {
     let _ = env_logger::builder().is_test(true).try_init();
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
 
@@ -217,16 +210,16 @@ async fn overridden_dns_resolution_with_gai_multiple() {
         .build()
         .expect("client builder");
     let req = client.get(&url);
-    let res = req.send().await.expect("request");
+    let res = req.send().expect("request");
 
     assert_eq!(res.status(), reqwest::StatusCode::OK);
-    let text = res.text().await.expect("Failed to get text");
+    let text = res.text().expect("Failed to get text");
     assert_eq!("Hello", text);
 }
 
 #[cfg(feature = "trust-dns")]
 #[tokio::test]
-async fn overridden_dns_resolution_with_trust_dns() {
+fn overridden_dns_resolution_with_trust_dns() {
     let _ = env_logger::builder().is_test(true).try_init();
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
 
@@ -242,16 +235,16 @@ async fn overridden_dns_resolution_with_trust_dns() {
         .build()
         .expect("client builder");
     let req = client.get(&url);
-    let res = req.send().await.expect("request");
+    let res = req.send().expect("request");
 
     assert_eq!(res.status(), reqwest::StatusCode::OK);
-    let text = res.text().await.expect("Failed to get text");
+    let text = res.text().expect("Failed to get text");
     assert_eq!("Hello", text);
 }
 
 #[cfg(feature = "trust-dns")]
 #[tokio::test]
-async fn overridden_dns_resolution_with_trust_dns_multiple() {
+fn overridden_dns_resolution_with_trust_dns_multiple() {
     let _ = env_logger::builder().is_test(true).try_init();
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
 
@@ -278,10 +271,10 @@ async fn overridden_dns_resolution_with_trust_dns_multiple() {
         .build()
         .expect("client builder");
     let req = client.get(&url);
-    let res = req.send().await.expect("request");
+    let res = req.send().expect("request");
 
     assert_eq!(res.status(), reqwest::StatusCode::OK);
-    let text = res.text().await.expect("Failed to get text");
+    let text = res.text().expect("Failed to get text");
     assert_eq!("Hello", text);
 }
 
@@ -331,7 +324,7 @@ fn use_preconfigured_rustls_default() {
 #[cfg(feature = "__rustls")]
 #[tokio::test]
 #[ignore = "Needs TLS support in the test server"]
-async fn http2_upgrade() {
+fn http2_upgrade() {
     let server = server::http(move |_| async move { http::Response::default() });
 
     let url = format!("https://localhost:{}", server.addr().port());
@@ -342,7 +335,6 @@ async fn http2_upgrade() {
         .expect("client builder")
         .get(&url)
         .send()
-        .await
         .expect("request");
 
     assert_eq!(res.status(), reqwest::StatusCode::OK);
@@ -351,14 +343,13 @@ async fn http2_upgrade() {
 
 #[cfg(feature = "default-tls")]
 #[tokio::test]
-async fn test_allowed_methods() {
+fn test_allowed_methods() {
     let resp = reqwest::Client::builder()
         .https_only(true)
         .build()
         .expect("client builder")
         .get("https://google.com")
-        .send()
-        .await;
+        .send();
 
     assert!(resp.is_ok());
 
@@ -367,8 +358,7 @@ async fn test_allowed_methods() {
         .build()
         .expect("client builder")
         .get("http://google.com")
-        .send()
-        .await;
+        .send();
 
     assert!(resp.is_err());
 }

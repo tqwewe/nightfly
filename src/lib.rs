@@ -1,7 +1,7 @@
 #![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![cfg_attr(test, deny(warnings))]
+// #![cfg_attr(test, deny(warnings))]
 #![doc(html_root_url = "https://docs.rs/reqwest/0.11.12")]
 
 //! # reqwest
@@ -33,11 +33,11 @@
 //! For a single request, you can use the [`get`][get] shortcut method.
 //!
 //! ```rust
-//! # async fn run() -> Result<(), reqwest::Error> {
+//! # fn run() -> Result<(), reqwest::Error> {
 //! let body = reqwest::get("https://www.rust-lang.org")
-//!     .await?
+//!     
 //!     .text()
-//!     .await?;
+//!     ;
 //!
 //! println!("body = {:?}", body);
 //! # Ok(())
@@ -59,12 +59,12 @@
 //! ```rust
 //! # use reqwest::Error;
 //! #
-//! # async fn run() -> Result<(), Error> {
+//! # fn run() -> Result<(), Error> {
 //! let client = reqwest::Client::new();
 //! let res = client.post("http://httpbin.org/post")
 //!     .body("the exact body that is sent")
 //!     .send()
-//!     .await?;
+//!     ;
 //! # Ok(())
 //! # }
 //! ```
@@ -80,14 +80,14 @@
 //! ```rust
 //! # use reqwest::Error;
 //! #
-//! # async fn run() -> Result<(), Error> {
+//! # fn run() -> Result<(), Error> {
 //! // This will POST a body of `foo=bar&baz=quux`
 //! let params = [("foo", "bar"), ("baz", "quux")];
 //! let client = reqwest::Client::new();
 //! let res = client.post("http://httpbin.org/post")
 //!     .form(&params)
 //!     .send()
-//!     .await?;
+//!     ;
 //! # Ok(())
 //! # }
 //! ```
@@ -103,7 +103,7 @@
 //! # use std::collections::HashMap;
 //! #
 //! # #[cfg(feature = "json")]
-//! # async fn run() -> Result<(), Error> {
+//! # fn run() -> Result<(), Error> {
 //! // This will POST a body of `{"lang":"rust","body":"json"}`
 //! let mut map = HashMap::new();
 //! map.insert("lang", "rust");
@@ -113,7 +113,7 @@
 //! let res = client.post("http://httpbin.org/post")
 //!     .json(&map)
 //!     .send()
-//!     .await?;
+//!     ;
 //! # Ok(())
 //! # }
 //! ```
@@ -203,13 +203,6 @@
 //! [Proxy]: ./struct.Proxy.html
 //! [cargo-features]: https://doc.rust-lang.org/stable/cargo/reference/manifest.html#the-features-section
 
-macro_rules! if_wasm {
-    ($($item:item)*) => {$(
-        #[cfg(target_arch = "wasm32")]
-        $item
-    )*}
-}
-
 macro_rules! if_hyper {
     ($($item:item)*) => {$(
         #[cfg(not(target_arch = "wasm32"))]
@@ -244,9 +237,9 @@ pub use self::response::ResponseBuilderExt;
 /// # Examples
 ///
 /// ```rust
-/// # async fn run() -> Result<(), reqwest::Error> {
-/// let body = reqwest::get("https://www.rust-lang.org").await?
-///     .text().await?;
+/// # fn run() -> Result<(), reqwest::Error> {
+/// let body = reqwest::get("https://www.rust-lang.org")
+///     .text();
 /// # Ok(())
 /// # }
 /// ```
@@ -259,8 +252,8 @@ pub use self::response::ResponseBuilderExt;
 /// - supplied `Url` cannot be parsed
 /// - there was an error while sending request
 /// - redirect limit was exhausted
-pub async fn get<T: IntoUrl>(url: T) -> crate::Result<Response> {
-    Client::builder().build()?.get(url).send().await
+pub fn get<T: IntoUrl>(url: T) -> crate::Result<HttpResponse> {
+    Client::builder().build()?.get(url).send()
 }
 
 fn _assert_impls() {
@@ -269,7 +262,7 @@ fn _assert_impls() {
     fn assert_clone<T: Clone>() {}
 
     assert_send::<Client>();
-    assert_sync::<Client>();
+    // assert_sync::<Client>();
     assert_clone::<Client>();
 
     assert_send::<Request>();
@@ -284,45 +277,29 @@ fn _assert_impls() {
     assert_sync::<Error>();
 }
 
-if_hyper! {
-    #[cfg(test)]
-    #[macro_use]
-    extern crate doc_comment;
+// #[cfg(test)]
+// #[macro_use]
+// extern crate doc_comment;
 
-    #[cfg(test)]
-    doctest!("../README.md");
+// #[cfg(test)]
+// doctest!("../README.md");
 
-    pub use self::async_impl::{
-        Body, Client, ClientBuilder, Request, RequestBuilder, Response, Upgraded,
-    };
-    pub use self::proxy::Proxy;
-    #[cfg(feature = "__tls")]
-    // Re-exports, to be removed in a future release
-    pub use tls::{Certificate, Identity};
-    #[cfg(feature = "multipart")]
-    pub use self::async_impl::multipart;
+#[cfg(feature = "multipart")]
+pub use self::lunatic_impl::multipart;
+pub use self::lunatic_impl::{Body, Client, ClientBuilder, HttpResponse, Request, RequestBuilder};
+pub use self::proxy::Proxy;
+#[cfg(feature = "__tls")]
+// Re-exports, to be removed in a future release
+pub use tls::{Certificate, Identity};
 
-
-    mod async_impl;
-    #[cfg(feature = "blocking")]
-    pub mod blocking;
-    mod connect;
-    #[cfg(feature = "cookies")]
-    pub mod cookie;
-    #[cfg(feature = "trust-dns")]
-    mod dns;
-    mod proxy;
-    pub mod redirect;
-    #[cfg(feature = "__tls")]
-    pub mod tls;
-    mod util;
-}
-
-if_wasm! {
-    mod wasm;
-    mod util;
-
-    pub use self::wasm::{Body, Client, ClientBuilder, Request, RequestBuilder, Response};
-    #[cfg(feature = "multipart")]
-    pub use self::wasm::multipart;
-}
+mod connect;
+#[cfg(feature = "cookies")]
+pub mod cookie;
+mod lunatic_impl;
+// #[cfg(feature = "trust-dns")]
+// mod dns;
+mod proxy;
+pub mod redirect;
+#[cfg(feature = "__tls")]
+pub mod tls;
+mod util;

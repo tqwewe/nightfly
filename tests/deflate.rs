@@ -3,17 +3,17 @@ use std::io::Write;
 use support::*;
 
 #[tokio::test]
-async fn deflate_response() {
-    deflate_case(10_000, 4096).await;
+fn deflate_response() {
+    deflate_case(10_000, 4096);
 }
 
 #[tokio::test]
-async fn deflate_single_byte_chunks() {
-    deflate_case(10, 1).await;
+fn deflate_single_byte_chunks() {
+    deflate_case(10, 1);
 }
 
 #[tokio::test]
-async fn test_deflate_empty_body() {
+fn test_deflate_empty_body() {
     let server = server::http(move |req| async move {
         assert_eq!(req.method(), "HEAD");
 
@@ -28,16 +28,15 @@ async fn test_deflate_empty_body() {
     let res = client
         .head(&format!("http://{}/deflate", server.addr()))
         .send()
-        .await
         .unwrap();
 
-    let body = res.text().await.unwrap();
+    let body = res.text().unwrap();
 
     assert_eq!(body, "");
 }
 
 #[tokio::test]
-async fn test_accept_header_is_not_changed_if_set() {
+fn test_accept_header_is_not_changed_if_set() {
     let server = server::http(move |req| async move {
         assert_eq!(req.headers()["accept"], "application/json");
         assert!(req.headers()["accept-encoding"]
@@ -56,14 +55,13 @@ async fn test_accept_header_is_not_changed_if_set() {
             reqwest::header::HeaderValue::from_static("application/json"),
         )
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.status(), reqwest::StatusCode::OK);
 }
 
 #[tokio::test]
-async fn test_accept_encoding_header_is_not_changed_if_set() {
+fn test_accept_encoding_header_is_not_changed_if_set() {
     let server = server::http(move |req| async move {
         assert_eq!(req.headers()["accept"], "*/*");
         assert_eq!(req.headers()["accept-encoding"], "identity");
@@ -79,13 +77,12 @@ async fn test_accept_encoding_header_is_not_changed_if_set() {
             reqwest::header::HeaderValue::from_static("identity"),
         )
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.status(), reqwest::StatusCode::OK);
 }
 
-async fn deflate_case(response_size: usize, chunk_size: usize) {
+fn deflate_case(response_size: usize, chunk_size: usize) {
     use futures_util::stream::StreamExt;
 
     let content: String = (0..response_size)
@@ -143,9 +140,8 @@ async fn deflate_case(response_size: usize, chunk_size: usize) {
     let res = client
         .get(&format!("http://{}/deflate", server.addr()))
         .send()
-        .await
         .expect("response");
 
-    let body = res.text().await.expect("text");
+    let body = res.text().expect("text");
     assert_eq!(body, content);
 }

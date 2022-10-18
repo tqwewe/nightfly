@@ -1,7 +1,6 @@
+use std::convert::TryFrom;
 use std::fmt;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::io::{Cursor, Read};
 
 #[cfg(feature = "gzip")]
 use async_compression::tokio::bufread::GzipDecoder;
@@ -13,18 +12,19 @@ use async_compression::tokio::bufread::BrotliDecoder;
 use async_compression::tokio::bufread::ZlibDecoder;
 
 use bytes::Bytes;
-use futures_core::Stream;
-use futures_util::stream::Peekable;
 use http::HeaderMap;
-use hyper::body::HttpBody;
 
+use httparse::{Status, EMPTY_HEADER};
+use lunatic::net::TcpStream;
 #[cfg(any(feature = "gzip", feature = "brotli", feature = "deflate"))]
 use tokio_util::codec::{BytesCodec, FramedRead};
 #[cfg(any(feature = "gzip", feature = "brotli", feature = "deflate"))]
 use tokio_util::io::StreamReader;
+use url::Url;
 
 use super::super::Body;
-use crate::error;
+use super::http_stream::HttpStream;
+use crate::{error, HttpResponse};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Accepts {
@@ -45,7 +45,7 @@ pub(crate) struct Decoder {
 
 enum Inner {
     /// A `PlainText` decoder just returns the response content as is.
-    PlainText(super::body::ImplStream),
+    PlainText(Vec<u8>),
 
     /// A `Gzip` decoder will uncompress the gzipped response content before returning it.
     #[cfg(feature = "gzip")]
@@ -63,11 +63,6 @@ enum Inner {
     #[cfg(any(feature = "brotli", feature = "gzip", feature = "deflate"))]
     Pending(Pending),
 }
-
-/// A future attempt to poll the response body for EOF so we know whether to use gzip or not.
-struct Pending(Peekable<IoStream>, DecoderType);
-
-struct IoStream(super::body::ImplStream);
 
 enum DecoderType {
     #[cfg(feature = "gzip")]
@@ -95,9 +90,9 @@ impl Decoder {
     /// A plain text decoder.
     ///
     /// This decoder will emit the underlying chunks as-is.
-    fn plain_text(body: Body) -> Decoder {
+    fn plain_text(body: Vec<u8>) -> Decoder {
         Decoder {
-            inner: Inner::PlainText(body.into_stream()),
+            inner: Inner::PlainText(body),
         }
     }
 
@@ -146,10 +141,16 @@ impl Decoder {
         }
     }
 
+    pub fn decode(&self) -> Vec<u8> {
+        match &self.inner {
+            Inner::PlainText(text) => text.clone(),
+        }
+    }
+
     #[cfg(any(feature = "brotli", feature = "gzip", feature = "deflate"))]
     fn detect_encoding(headers: &mut HeaderMap, encoding_str: &str) -> bool {
         use http::header::{CONTENT_ENCODING, CONTENT_LENGTH, TRANSFER_ENCODING};
-        use log::warn;
+        use lunatic_log::warn;
 
         let mut is_content_encoded = {
             headers
@@ -182,7 +183,7 @@ impl Decoder {
     /// how to decode the content body of the request.
     ///
     /// Uses the correct variant by inspecting the Content-Encoding header.
-    pub(super) fn detect(_headers: &mut HeaderMap, body: Body, _accepts: Accepts) -> Decoder {
+    pub(super) fn detect(_headers: &mut HeaderMap, body: Vec<u8>, _accepts: Accepts) -> Decoder {
         #[cfg(feature = "gzip")]
         {
             if _accepts.gzip && Decoder::detect_encoding(_headers, "gzip") {
@@ -208,10 +209,8 @@ impl Decoder {
     }
 }
 
-impl Stream for Decoder {
-    type Item = Result<Bytes, error::Error>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+impl Read for Decoder {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         // Do a read or poll for a pending decoder value.
         match self.inner {
             #[cfg(any(feature = "brotli", feature = "gzip", feature = "deflate"))]
@@ -225,7 +224,7 @@ impl Stream for Decoder {
                 }
                 Poll::Pending => return Poll::Pending,
             },
-            Inner::PlainText(ref mut body) => Pin::new(body).poll_next(cx),
+            Inner::PlainText(ref mut body) => Cursor::new(body).read(buf),
             #[cfg(feature = "gzip")]
             Inner::Gzip(ref mut decoder) => {
                 return match futures_core::ready!(Pin::new(decoder).poll_next(cx)) {
@@ -254,88 +253,221 @@ impl Stream for Decoder {
     }
 }
 
-impl HttpBody for Decoder {
-    type Data = Bytes;
-    type Error = crate::Error;
+// impl HttpBody for Decoder {
+//     type Data = Bytes;
+//     type Error = crate::Error;
 
-    fn poll_data(
-        self: Pin<&mut Self>,
-        cx: &mut Context,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        self.poll_next(cx)
-    }
+//     fn poll_data(
+//         self: Pin<&mut Self>,
+//         cx: &mut Context,
+//     ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+//         self.poll_next(cx)
+//     }
 
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        _cx: &mut Context,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        Poll::Ready(Ok(None))
-    }
+//     fn poll_trailers(
+//         self: Pin<&mut Self>,
+//         _cx: &mut Context,
+//     ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
+//         Poll::Ready(Ok(None))
+//     }
 
-    fn size_hint(&self) -> http_body::SizeHint {
-        match self.inner {
-            Inner::PlainText(ref body) => HttpBody::size_hint(body),
-            // the rest are "unknown", so default
-            #[cfg(any(feature = "brotli", feature = "gzip", feature = "deflate"))]
-            _ => http_body::SizeHint::default(),
-        }
-    }
+//     fn size_hint(&self) -> http_body::SizeHint {
+//         match self.inner {
+//             Inner::PlainText(ref body) => HttpBody::size_hint(body),
+//             // the rest are "unknown", so default
+//             #[cfg(any(feature = "brotli", feature = "gzip", feature = "deflate"))]
+//             _ => http_body::SizeHint::default(),
+//         }
+//     }
+// }
+
+// impl Future for Pending {
+//     type Output = Result<Inner, std::io::Error>;
+
+//     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+//         use futures_util::StreamExt;
+
+//         match futures_core::ready!(Pin::new(&mut self.0).poll_peek(cx)) {
+//             Some(Ok(_)) => {
+//                 // fallthrough
+//             }
+//             Some(Err(_e)) => {
+//                 // error was just a ref, so we need to really poll to move it
+//                 return Poll::Ready(Err(futures_core::ready!(
+//                     Pin::new(&mut self.0).poll_next(cx)
+//                 )
+//                 .expect("just peeked Some")
+//                 .unwrap_err()));
+//             }
+//             None => return Poll::Ready(Ok(Inner::PlainText(Body::empty().into_stream()))),
+//         };
+
+//         let _body = std::mem::replace(
+//             &mut self.0,
+//             IoStream(Body::empty().into_stream()).peekable(),
+//         );
+
+//         match self.1 {
+//             #[cfg(feature = "brotli")]
+//             DecoderType::Brotli => Poll::Ready(Ok(Inner::Brotli(FramedRead::new(
+//                 BrotliDecoder::new(StreamReader::new(_body)),
+//                 BytesCodec::new(),
+//             )))),
+//             #[cfg(feature = "gzip")]
+//             DecoderType::Gzip => Poll::Ready(Ok(Inner::Gzip(FramedRead::new(
+//                 GzipDecoder::new(StreamReader::new(_body)),
+//                 BytesCodec::new(),
+//             )))),
+//             #[cfg(feature = "deflate")]
+//             DecoderType::Deflate => Poll::Ready(Ok(Inner::Deflate(FramedRead::new(
+//                 ZlibDecoder::new(StreamReader::new(_body)),
+//                 BytesCodec::new(),
+//             )))),
+//         }
+//     }
+// }
+
+const MAX_REQUEST_SIZE: usize = 10 * 1024 * 1024;
+const REQUEST_BUFFER_SIZE: usize = 4096;
+const MAX_HEADERS: usize = 128;
+
+/// The result of parsing a response from a buffer.
+type ResponseResult = Result<HttpResponse, ParseResponseError>;
+
+#[derive(Debug)]
+pub(crate) enum ParseResponseError {
+    TcpStreamClosed,
+    TcpStreamClosedWithoutData,
+    HttpParseError(httparse::Error),
+    ResponseTooLarge,
+    UnknownCode,
 }
 
-impl Future for Pending {
-    type Output = Result<Inner, std::io::Error>;
+pub(crate) fn parse_response(
+    mut response_buffer: Vec<u8>,
+    mut stream: HttpStream,
+    url: Url,
+) -> ResponseResult {
+    let mut buffer = [0_u8; REQUEST_BUFFER_SIZE];
+    let mut headers = [EMPTY_HEADER; MAX_HEADERS];
+    println!("STARTING PARSE CYCLE");
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        use futures_util::StreamExt;
-
-        match futures_core::ready!(Pin::new(&mut self.0).poll_peek(cx)) {
-            Some(Ok(_)) => {
-                // fallthrough
+    // Loop until at least one complete response is read.
+    let (response_raw, offset) = loop {
+        // println!("STARTING PARSE from buf {:?}", offset);
+        // In case of pipelined responses the `response_buffer` is going to come
+        // prefilled with some data, and we should attempt to parse it into a response
+        // before we decide to read more from `TcpStream`.
+        let mut response_raw = httparse::Response::new(&mut headers);
+        println!("ABOUT TO PARSE");
+        match response_raw.parse(&response_buffer) {
+            Ok(state) => match state {
+                Status::Complete(offset) => {
+                    println!("GOT COMPLETE FOR RESPONSE - breaking {:?}", offset);
+                    // Continue outside the loop.
+                    break (response_raw, offset);
+                }
+                Status::Partial => {
+                    // Read more data from TCP stream
+                    let n = stream.read(&mut buffer);
+                    if n.is_err() || *n.as_ref().unwrap() == 0 {
+                        if response_buffer.is_empty() {
+                            return Err(ParseResponseError::TcpStreamClosedWithoutData);
+                        } else {
+                            return Err(ParseResponseError::TcpStreamClosed);
+                        }
+                    }
+                    let n = n.unwrap();
+                    println!("GOT PARTIAL FOR RESPONSE {:?} | {:?}", n, &buffer[..n]);
+                    // Invalidate references in `headers` that could point to the previous
+                    // `response_buffer` before extending it.
+                    headers = [EMPTY_HEADER; MAX_HEADERS];
+                    response_buffer.extend(&buffer[..n]);
+                    // If response passed max size, abort
+                    if response_buffer.len() > MAX_REQUEST_SIZE {
+                        return Err(ParseResponseError::ResponseTooLarge);
+                    }
+                }
+            },
+            Err(err) => {
+                println!("GOT ERR");
+                return Err(ParseResponseError::HttpParseError(err));
             }
-            Some(Err(_e)) => {
-                // error was just a ref, so we need to really poll to move it
-                return Poll::Ready(Err(futures_core::ready!(
-                    Pin::new(&mut self.0).poll_next(cx)
-                )
-                .expect("just peeked Some")
-                .unwrap_err()));
-            }
-            None => return Poll::Ready(Ok(Inner::PlainText(Body::empty().into_stream()))),
-        };
-
-        let _body = std::mem::replace(
-            &mut self.0,
-            IoStream(Body::empty().into_stream()).peekable(),
-        );
-
-        match self.1 {
-            #[cfg(feature = "brotli")]
-            DecoderType::Brotli => Poll::Ready(Ok(Inner::Brotli(FramedRead::new(
-                BrotliDecoder::new(StreamReader::new(_body)),
-                BytesCodec::new(),
-            )))),
-            #[cfg(feature = "gzip")]
-            DecoderType::Gzip => Poll::Ready(Ok(Inner::Gzip(FramedRead::new(
-                GzipDecoder::new(StreamReader::new(_body)),
-                BytesCodec::new(),
-            )))),
-            #[cfg(feature = "deflate")]
-            DecoderType::Deflate => Poll::Ready(Ok(Inner::Deflate(FramedRead::new(
-                ZlibDecoder::new(StreamReader::new(_body)),
-                BytesCodec::new(),
-            )))),
         }
-    }
-}
+    };
 
-impl Stream for IoStream {
-    type Item = Result<Bytes, std::io::Error>;
+    // At this point one full response header is available, but the body (if it
+    // exists) might not be fully loaded yet.
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        match futures_core::ready!(Pin::new(&mut self.0).poll_next(cx)) {
-            Some(Ok(chunk)) => Poll::Ready(Some(Ok(chunk))),
-            Some(Err(err)) => Poll::Ready(Some(Err(err.into_io()))),
-            None => Poll::Ready(None),
+    let status_code = match http::StatusCode::try_from(response_raw.code.unwrap()) {
+        Ok(code) => code,
+        Err(_) => {
+            return Err(ParseResponseError::UnknownCode);
+        }
+    };
+    let response = http::Response::builder().status(status_code);
+    let mut content_lengt = None;
+    let response = response_raw
+        .headers
+        .iter()
+        .fold(response, |response, header| {
+            if header.name.to_lowercase() == "content-length" {
+                let value_string = std::str::from_utf8(header.value).unwrap();
+                let length = value_string.parse::<usize>().unwrap();
+                content_lengt = Some(length);
+            }
+            response.header(header.name, header.value)
+        });
+    // If content-length exists, response has a body
+    let res = response.body(vec![0u8; 0]).unwrap();
+    let mut res = HttpResponse {
+        headers: res.headers().to_owned(),
+        status: res.status().to_owned(),
+        version: res.version().to_owned(),
+        body: vec![],
+        url,
+    };
+    println!(
+        "BUILT AN HTTP RESPONSE len: {:?} - {} | {:?}",
+        content_lengt,
+        response_buffer[offset..].len(),
+        res
+    );
+    if let Some(content_lengt) = content_lengt {
+        #[allow(clippy::comparison_chain)]
+        if response_buffer[offset..].len() == content_lengt {
+            // Complete content is captured from the response w/o trailing pipelined
+            // responses.
+            res.body = response_buffer[offset..].to_owned();
+            return Ok(res);
+
+        // } else if response_buffer[offset..].len() > content_lengt {
+        //     // Complete content is captured from the response with trailing pipelined
+        //     // responses.
+        //         response
+        //             .body(Body::from_slice(&response_buffer[offset..]))
+        //             .unwrap(),
+        //         Vec::from(&response_buffer[offset + content_lengt..])
+        } else {
+            // Read the rest from TCP stream to form a full response
+            println!("ELSE");
+            let rest = content_lengt - response_buffer[offset..].len();
+            let mut buffer = vec![0u8; rest];
+            stream.read_exact(&mut buffer).unwrap();
+            response_buffer.extend(&buffer);
+            res.body = response_buffer[offset..].to_owned();
+            return Ok(res);
+        }
+    } else {
+        // If the offset points to the end of `responses_buffer` we have a full response,
+        // w/o a trailing pipelined response.
+        if response_buffer[offset..].is_empty() {
+            return Ok(res);
+        } else {
+            // PipelinedResponses::from_pipeline(
+            return Ok(res);
+            //     Vec::from(&response_buffer[offset..]),
+            // )
         }
     }
 }

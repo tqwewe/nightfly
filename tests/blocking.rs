@@ -84,7 +84,7 @@ fn test_post() {
         assert_eq!(req.method(), "POST");
         assert_eq!(req.headers()["content-length"], "5");
 
-        let data = hyper::body::to_bytes(req.into_body()).await.unwrap();
+        let data = hyper::body::to_bytes(req.into_body()).unwrap();
         assert_eq!(&*data, b"Hello");
 
         http::Response::default()
@@ -111,7 +111,7 @@ fn test_post_form() {
             "application/x-www-form-urlencoded"
         );
 
-        let data = hyper::body::to_bytes(req.into_body()).await.unwrap();
+        let data = hyper::body::to_bytes(req.into_body()).unwrap();
         assert_eq!(&*data, b"hello=world&sean=monstar");
 
         http::Response::default()

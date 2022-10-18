@@ -7,7 +7,7 @@ use crate::into_url::{IntoUrl, IntoUrlSealed};
 use crate::Url;
 use http::{header::HeaderValue, Uri};
 use ipnet::IpNet;
-use once_cell::sync::Lazy;
+use lunatic::process_local;
 use percent_encoding::percent_decode;
 use std::collections::HashMap;
 use std::env;
@@ -272,7 +272,11 @@ impl Proxy {
                 get_from_registry(),
             ))))
         } else {
-            Proxy::new(Intercept::System(SYS_PROXIES.clone()))
+            // TODO: enable caching via proxy process
+            Proxy::new(Intercept::System(Arc::new(get_sys_proxies(
+                get_from_registry(),
+            ))))
+            // Proxy::new(Intercept::System(SYS_PROXIES.clone()))
         };
         proxy.no_proxy = NoProxy::new();
         proxy
@@ -757,8 +761,9 @@ impl Dst for Uri {
     }
 }
 
-static SYS_PROXIES: Lazy<Arc<SystemProxyMap>> =
-    Lazy::new(|| Arc::new(get_sys_proxies(get_from_registry())));
+process_local! {
+    static SYS_PROXIES: SystemProxyMap = get_sys_proxies(get_from_registry());
+}
 
 /// Get system proxies information.
 ///
@@ -805,8 +810,10 @@ fn get_from_environment() -> SystemProxyMap {
     let mut proxies = HashMap::new();
 
     if is_cgi() {
-        if log::log_enabled!(log::Level::Warn) && env::var_os("HTTP_PROXY").is_some() {
-            log::warn!("HTTP_PROXY environment variable ignored in CGI");
+        if
+        /*lunatic_log::log_enabled!(log::Level::Warn) &&  */
+        env::var_os("HTTP_PROXY").is_some() {
+            lunatic_log::warn!("HTTP_PROXY environment variable ignored in CGI");
         }
     } else if !insert_from_env(&mut proxies, "http", "HTTP_PROXY") {
         insert_from_env(&mut proxies, "http", "http_proxy");
@@ -935,7 +942,6 @@ fn parse_registry_values(registry_values: RegistryProxyValues) -> SystemProxyMap
 #[cfg(test)]
 mod tests {
     use super::*;
-    use once_cell::sync::Lazy;
     use std::sync::Mutex;
 
     impl Dst for Url {
@@ -1075,12 +1081,8 @@ mod tests {
     // Smallest possible content for a mutex
     struct MutexInner;
 
-    static ENVLOCK: Lazy<Mutex<MutexInner>> = Lazy::new(|| Mutex::new(MutexInner));
-
     #[test]
     fn test_get_sys_proxies_parsing() {
-        // Stop other threads from modifying process-global ENV while we are.
-        let _lock = ENVLOCK.lock();
         // save system setting first.
         let _g1 = env_guard("HTTP_PROXY");
         let _g2 = env_guard("http_proxy");
@@ -1098,8 +1100,6 @@ mod tests {
         // reset user setting when guards drop
         drop(_g1);
         drop(_g2);
-        // Let other threads run now
-        drop(_lock);
 
         assert!(!baseline_proxies.contains_key("http"));
         assert!(!invalid_proxies.contains_key("http"));
@@ -1112,8 +1112,6 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn test_get_sys_proxies_registry_parsing() {
-        // Stop other threads from modifying process-global ENV while we are.
-        let _lock = ENVLOCK.lock();
         // save system setting first.
         let _g1 = env_guard("HTTP_PROXY");
         let _g2 = env_guard("http_proxy");
@@ -1140,8 +1138,6 @@ mod tests {
         // reset user setting when guards drop
         drop(_g1);
         drop(_g2);
-        // Let other threads run now
-        drop(_lock);
 
         assert_eq!(baseline_proxies.contains_key("http"), false);
         assert_eq!(disabled_proxies.contains_key("http"), false);
@@ -1181,8 +1177,6 @@ mod tests {
 
     #[test]
     fn test_get_sys_proxies_in_cgi() {
-        // Stop other threads from modifying process-global ENV while we are.
-        let _lock = ENVLOCK.lock();
         // save system setting first.
         let _g1 = env_guard("REQUEST_METHOD");
         let _g2 = env_guard("HTTP_PROXY");
@@ -1200,8 +1194,6 @@ mod tests {
         // reset user setting when guards drop
         drop(_g1);
         drop(_g2);
-        // Let other threads run now
-        drop(_lock);
 
         // not in CGI yet
         assert_eq!(baseline_proxies["http"].host(), "evil");
@@ -1211,8 +1203,6 @@ mod tests {
 
     #[test]
     fn test_sys_no_proxy() {
-        // Stop other threads from modifying process-global ENV while we are.
-        let _lock = ENVLOCK.lock();
         // save system setting first.
         let _g1 = env_guard("HTTP_PROXY");
         let _g2 = env_guard("NO_PROXY");
@@ -1266,14 +1256,10 @@ mod tests {
         // reset user setting when guards drop
         drop(_g1);
         drop(_g2);
-        // Let other threads run now
-        drop(_lock);
     }
 
     #[test]
     fn test_wildcard_sys_no_proxy() {
-        // Stop other threads from modifying process-global ENV while we are.
-        let _lock = ENVLOCK.lock();
         // save system setting first.
         let _g1 = env_guard("HTTP_PROXY");
         let _g2 = env_guard("NO_PROXY");
@@ -1292,14 +1278,10 @@ mod tests {
         // reset user setting when guards drop
         drop(_g1);
         drop(_g2);
-        // Let other threads run now
-        drop(_lock);
     }
 
     #[test]
     fn test_empty_sys_no_proxy() {
-        // Stop other threads from modifying process-global ENV while we are.
-        let _lock = ENVLOCK.lock();
         // save system setting first.
         let _g1 = env_guard("HTTP_PROXY");
         let _g2 = env_guard("NO_PROXY");
@@ -1319,15 +1301,10 @@ mod tests {
         // reset user setting when guards drop
         drop(_g1);
         drop(_g2);
-        // Let other threads run now
-        drop(_lock);
     }
 
     #[test]
     fn test_no_proxy_load() {
-        // Stop other threads from modifying process-global ENV while we are.
-        let _lock = ENVLOCK.lock();
-
         let _g1 = env_guard("no_proxy");
         let domain = "lower.case";
         env::set_var("no_proxy", domain);
@@ -1368,8 +1345,6 @@ mod tests {
         drop(_g1);
         drop(_g2);
         drop(_g3);
-        // Let other threads run now
-        drop(_lock);
     }
 
     #[cfg(target_os = "windows")]

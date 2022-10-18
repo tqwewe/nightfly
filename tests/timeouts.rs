@@ -5,13 +5,13 @@ use support::*;
 use std::time::Duration;
 
 #[tokio::test]
-async fn client_timeout() {
+fn client_timeout() {
     let _ = env_logger::try_init();
 
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });
@@ -23,7 +23,7 @@ async fn client_timeout() {
 
     let url = format!("http://{}/slow", server.addr());
 
-    let res = client.get(&url).send().await;
+    let res = client.get(&url).send();
 
     let err = res.unwrap_err();
 
@@ -32,13 +32,13 @@ async fn client_timeout() {
 }
 
 #[tokio::test]
-async fn request_timeout() {
+fn request_timeout() {
     let _ = env_logger::try_init();
 
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });
@@ -47,11 +47,7 @@ async fn request_timeout() {
 
     let url = format!("http://{}/slow", server.addr());
 
-    let res = client
-        .get(&url)
-        .timeout(Duration::from_millis(500))
-        .send()
-        .await;
+    let res = client.get(&url).timeout(Duration::from_millis(500)).send();
 
     let err = res.unwrap_err();
 
@@ -65,7 +61,7 @@ async fn request_timeout() {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::test]
-async fn connect_timeout() {
+fn connect_timeout() {
     let _ = env_logger::try_init();
 
     let client = reqwest::Client::builder()
@@ -75,11 +71,7 @@ async fn connect_timeout() {
 
     let url = "http://10.255.255.1:81/slow";
 
-    let res = client
-        .get(url)
-        .timeout(Duration::from_millis(1000))
-        .send()
-        .await;
+    let res = client.get(url).timeout(Duration::from_millis(1000)).send();
 
     let err = res.unwrap_err();
 
@@ -87,14 +79,14 @@ async fn connect_timeout() {
 }
 
 #[tokio::test]
-async fn response_timeout() {
+fn response_timeout() {
     let _ = env_logger::try_init();
 
     let server = server::http(move |_req| {
         async {
             // immediate response, but delayed body
             let body = hyper::Body::wrap_stream(futures_util::stream::once(async {
-                tokio::time::sleep(Duration::from_secs(2)).await;
+                tokio::time::sleep(Duration::from_secs(2));
                 Ok::<_, std::convert::Infallible>("Hello")
             }));
 
@@ -109,8 +101,8 @@ async fn response_timeout() {
         .unwrap();
 
     let url = format!("http://{}/slow", server.addr());
-    let res = client.get(&url).send().await.expect("Failed to get");
-    let body = res.text().await;
+    let res = client.get(&url).send().expect("Failed to get");
+    let body = res.text();
 
     let err = body.unwrap_err();
 
@@ -134,7 +126,7 @@ fn timeout_closes_connection() {
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });
@@ -158,7 +150,7 @@ fn timeout_blocking_request() {
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });
@@ -191,7 +183,7 @@ fn blocking_request_timeout_body() {
         async {
             // immediate response, but delayed body
             let body = hyper::Body::wrap_stream(futures_util::stream::once(async {
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                tokio::time::sleep(Duration::from_secs(1));
                 Ok::<_, std::convert::Infallible>("Hello")
             }));
 
@@ -228,7 +220,7 @@ fn write_timeout_large_body() {
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });

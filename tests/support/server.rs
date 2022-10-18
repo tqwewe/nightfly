@@ -55,7 +55,7 @@ where
                     async move {
                         Ok::<_, Infallible>(hyper::service::service_fn(move |req| {
                             let fut = func(req);
-                            async move { Ok::<_, Infallible>(fut.await) }
+                            async move { Ok::<_, Infallible>(fut) }
                         }))
                     }
                 },
@@ -65,7 +65,7 @@ where
         let addr = srv.local_addr();
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let srv = srv.with_graceful_shutdown(async move {
-            let _ = shutdown_rx.await;
+            let _ = shutdown_rx;
         });
 
         let (panic_tx, panic_rx) = std_mpsc::channel();

@@ -1,17 +1,19 @@
 #![deny(warnings)]
+extern crate reqwest;
 
-// This is using the `tokio` runtime. You'll need the following dependency:
+use lunatic::Mailbox;
+
+// This is using the `lunatic` runtime.
 //
-// `tokio = { version = "1", features = ["full"] }`
-#[cfg(not(target_arch = "wasm32"))]
-#[tokio::main]
-async fn main() -> Result<(), reqwest::Error> {
+#[lunatic::main]
+fn main(_: Mailbox<()>) -> () {
     // Some simple CLI args requirements...
     let url = match std::env::args().nth(1) {
         Some(url) => url,
         None => {
             println!("No CLI URL provided, using default.");
-            "https://hyper.rs".into()
+            // "https://hyper.rs".into()
+            "http://localhost:3000".into()
         }
     };
 
@@ -21,21 +23,14 @@ async fn main() -> Result<(), reqwest::Error> {
     //
     // In most cases, you should create/build a reqwest::Client and reuse
     // it for all requests.
-    let res = reqwest::get(url).await?;
+    let res = reqwest::get(url).unwrap();
 
     eprintln!("Response: {:?} {}", res.version(), res.status());
     eprintln!("Headers: {:#?}\n", res.headers());
 
-    let body = res.text().await?;
+    let body = res.text().unwrap();
 
     println!("{}", body);
 
-    Ok(())
+    // Ok(())
 }
-
-// The [cfg(not(target_arch = "wasm32"))] above prevent building the tokio::main function
-// for wasm32 target, because tokio isn't compatible with wasm32.
-// If you aren't building for wasm32, you don't need that line.
-// The two lines below avoid the "'main' function not found" error when building for wasm32 target.
-#[cfg(target_arch = "wasm32")]
-fn main() {}

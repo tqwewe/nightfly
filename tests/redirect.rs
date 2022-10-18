@@ -4,7 +4,7 @@ use futures_util::stream::StreamExt;
 use support::*;
 
 #[tokio::test]
-async fn test_redirect_301_and_302_and_303_changes_post_to_get() {
+fn test_redirect_301_and_302_and_303_changes_post_to_get() {
     let client = reqwest::Client::new();
     let codes = [301u16, 302, 303];
 
@@ -30,7 +30,7 @@ async fn test_redirect_301_and_302_and_303_changes_post_to_get() {
 
         let url = format!("http://{}/{}", redirect.addr(), code);
         let dst = format!("http://{}/{}", redirect.addr(), "dst");
-        let res = client.post(&url).send().await.unwrap();
+        let res = client.post(&url).send().unwrap();
         assert_eq!(res.url().as_str(), dst);
         assert_eq!(res.status(), reqwest::StatusCode::OK);
         assert_eq!(
@@ -41,7 +41,7 @@ async fn test_redirect_301_and_302_and_303_changes_post_to_get() {
 }
 
 #[tokio::test]
-async fn test_redirect_307_and_308_tries_to_get_again() {
+fn test_redirect_307_and_308_tries_to_get_again() {
     let client = reqwest::Client::new();
     let codes = [307u16, 308];
     for &code in codes.iter() {
@@ -66,7 +66,7 @@ async fn test_redirect_307_and_308_tries_to_get_again() {
 
         let url = format!("http://{}/{}", redirect.addr(), code);
         let dst = format!("http://{}/{}", redirect.addr(), "dst");
-        let res = client.get(&url).send().await.unwrap();
+        let res = client.get(&url).send().unwrap();
         assert_eq!(res.url().as_str(), dst);
         assert_eq!(res.status(), reqwest::StatusCode::OK);
         assert_eq!(
@@ -77,7 +77,7 @@ async fn test_redirect_307_and_308_tries_to_get_again() {
 }
 
 #[tokio::test]
-async fn test_redirect_307_and_308_tries_to_post_again() {
+fn test_redirect_307_and_308_tries_to_post_again() {
     let _ = env_logger::try_init();
     let client = reqwest::Client::new();
     let codes = [307u16, 308];
@@ -86,7 +86,7 @@ async fn test_redirect_307_and_308_tries_to_post_again() {
             assert_eq!(req.method(), "POST");
             assert_eq!(req.headers()["content-length"], "5");
 
-            let data = req.body_mut().next().await.unwrap().unwrap();
+            let data = req.body_mut().next().unwrap().unwrap();
             assert_eq!(&*data, b"Hello");
 
             if req.uri() == &*format!("/{}", code) {
@@ -108,7 +108,7 @@ async fn test_redirect_307_and_308_tries_to_post_again() {
 
         let url = format!("http://{}/{}", redirect.addr(), code);
         let dst = format!("http://{}/{}", redirect.addr(), "dst");
-        let res = client.post(&url).body("Hello").send().await.unwrap();
+        let res = client.post(&url).body("Hello").send().unwrap();
         assert_eq!(res.url().as_str(), dst);
         assert_eq!(res.status(), reqwest::StatusCode::OK);
         assert_eq!(
@@ -129,7 +129,7 @@ fn test_redirect_307_does_not_try_if_reader_cannot_reset() {
             assert_eq!(req.uri(), &*format!("/{}", code));
             assert_eq!(req.headers()["transfer-encoding"], "chunked");
 
-            let data = req.body_mut().next().await.unwrap().unwrap();
+            let data = req.body_mut().next().unwrap().unwrap();
             assert_eq!(&*data, b"Hello");
 
             http::Response::builder()
@@ -152,7 +152,7 @@ fn test_redirect_307_does_not_try_if_reader_cannot_reset() {
 }
 
 #[tokio::test]
-async fn test_redirect_removes_sensitive_headers() {
+fn test_redirect_removes_sensitive_headers() {
     use tokio::sync::watch;
 
     let (tx, rx) = watch::channel::<Option<std::net::SocketAddr>>(None);
@@ -162,7 +162,7 @@ async fn test_redirect_removes_sensitive_headers() {
         async move {
             assert_eq!(req.headers().get("cookie"), None);
 
-            rx.changed().await.unwrap();
+            rx.changed().unwrap();
             let mid_addr = rx.borrow().unwrap();
             assert_eq!(
                 req.headers()["referer"],
@@ -194,12 +194,11 @@ async fn test_redirect_removes_sensitive_headers() {
             reqwest::header::HeaderValue::from_static("foo=bar"),
         )
         .send()
-        .await
         .unwrap();
 }
 
 #[tokio::test]
-async fn test_redirect_policy_can_return_errors() {
+fn test_redirect_policy_can_return_errors() {
     let server = server::http(move |req| async move {
         assert_eq!(req.uri(), "/loop");
         http::Response::builder()
@@ -210,12 +209,12 @@ async fn test_redirect_policy_can_return_errors() {
     });
 
     let url = format!("http://{}/loop", server.addr());
-    let err = reqwest::get(&url).await.unwrap_err();
+    let err = reqwest::get(&url).unwrap_err();
     assert!(err.is_redirect());
 }
 
 #[tokio::test]
-async fn test_redirect_policy_can_stop_redirects_without_an_error() {
+fn test_redirect_policy_can_stop_redirects_without_an_error() {
     let server = server::http(move |req| async move {
         assert_eq!(req.uri(), "/no-redirect");
         http::Response::builder()
@@ -233,7 +232,6 @@ async fn test_redirect_policy_can_stop_redirects_without_an_error() {
         .unwrap()
         .get(&url)
         .send()
-        .await
         .unwrap();
 
     assert_eq!(res.url().as_str(), url);
@@ -241,7 +239,7 @@ async fn test_redirect_policy_can_stop_redirects_without_an_error() {
 }
 
 #[tokio::test]
-async fn test_referer_is_not_set_if_disabled() {
+fn test_referer_is_not_set_if_disabled() {
     let server = server::http(move |req| async move {
         if req.uri() == "/no-refer" {
             http::Response::builder()
@@ -263,12 +261,11 @@ async fn test_referer_is_not_set_if_disabled() {
         .unwrap()
         .get(&format!("http://{}/no-refer", server.addr()))
         .send()
-        .await
         .unwrap();
 }
 
 #[tokio::test]
-async fn test_invalid_location_stops_redirect_gh484() {
+fn test_invalid_location_stops_redirect_gh484() {
     let server = server::http(move |_req| async move {
         http::Response::builder()
             .status(302)
@@ -279,7 +276,7 @@ async fn test_invalid_location_stops_redirect_gh484() {
 
     let url = format!("http://{}/yikes", server.addr());
 
-    let res = reqwest::get(&url).await.unwrap();
+    let res = reqwest::get(&url).unwrap();
 
     assert_eq!(res.url().as_str(), url);
     assert_eq!(res.status(), reqwest::StatusCode::FOUND);
@@ -287,7 +284,7 @@ async fn test_invalid_location_stops_redirect_gh484() {
 
 #[cfg(feature = "cookies")]
 #[tokio::test]
-async fn test_redirect_302_with_set_cookies() {
+fn test_redirect_302_with_set_cookies() {
     let code = 302;
     let server = server::http(move |req| async move {
         if req.uri() == "/302" {
@@ -311,7 +308,7 @@ async fn test_redirect_302_with_set_cookies() {
         .cookie_store(true)
         .build()
         .unwrap();
-    let res = client.get(&url).send().await.unwrap();
+    let res = client.get(&url).send().unwrap();
 
     assert_eq!(res.url().as_str(), dst);
     assert_eq!(res.status(), reqwest::StatusCode::OK);
@@ -320,7 +317,7 @@ async fn test_redirect_302_with_set_cookies() {
 #[cfg(feature = "__rustls")]
 #[tokio::test]
 #[ignore = "Needs TLS support in the test server"]
-async fn test_redirect_https_only_enforced_gh1312() {
+fn test_redirect_https_only_enforced_gh1312() {
     let server = server::http(move |_req| async move {
         http::Response::builder()
             .status(302)
@@ -338,8 +335,7 @@ async fn test_redirect_https_only_enforced_gh1312() {
         .build()
         .expect("client builder")
         .get(&url)
-        .send()
-        .await;
+        .send();
 
     let err = res.unwrap_err();
     assert!(err.is_redirect());

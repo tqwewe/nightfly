@@ -8,7 +8,7 @@ use std::error::Error as StdError;
 use std::fmt;
 
 use crate::header::{HeaderMap, AUTHORIZATION, COOKIE, PROXY_AUTHORIZATION, WWW_AUTHENTICATE};
-use hyper::StatusCode;
+use http::StatusCode;
 
 use crate::Url;
 
@@ -314,7 +314,7 @@ fn test_redirect_policy_custom() {
 
 #[test]
 fn test_remove_sensitive_headers() {
-    use hyper::header::{HeaderValue, ACCEPT, AUTHORIZATION, COOKIE};
+    use http::header::{HeaderValue, ACCEPT, AUTHORIZATION, COOKIE};
 
     let mut headers = HeaderMap::new();
     headers.insert(ACCEPT, HeaderValue::from_static("*/*"));

@@ -3,18 +3,18 @@
 ## Disclaimer
 This project is still highly experimental and therefore not to be used in production
 
-[![crates.io](https://img.shields.io/crates/v/nightfly.svg)](https://crates.io/crates/nightfly)
-[![Documentation](https://docs.rs/nightfly/badge.svg)](https://docs.rs/nightfly)
+<!-- [![crates.io](https://img.shields.io/crates/v/nightfly.svg)](https://crates.io/crates/nightfly) -->
+<!-- [![Documentation](https://docs.rs/nightfly/badge.svg)](https://docs.rs/nightfly) -->
 [![MIT/Apache-2 licensed](https://img.shields.io/crates/l/nightfly.svg)](./LICENSE-APACHE)
-[![CI](https://github.com/seanmonstar/nightfly/workflows/CI/badge.svg)](https://github.com/seanmonstar/nightfly/actions?query=workflow%3ACI)
+<!-- [![CI](https://github.com/seanmonstar/nightfly/workflows/CI/badge.svg)](https://github.com/seanmonstar/nightfly/actions?query=workflow%3ACI) -->
 
-An ergonomic, batteries-included HTTP Client for Rust.
+An ergonomic, batteries-included HTTP Client for the lunatic runtime written in Rust.
 
-- Plain bodies, JSON, urlencoded, multipart
-- Customizable redirect policy
-- HTTP Proxies
-- HTTPS via lunatic-native TLS
-- Cookie Store
+- Plain bodies, JSON, urlencoded, multipart (see examples)
+- Customizable redirect policy (IN PROGRESS)
+- HTTP Proxies (IN PROGRESS)
+- HTTPS via lunatic-native TLS (see examples)
+- Cookie Store (IN PROGRESS)
 - [Changelog](CHANGELOG.md)
 
 
@@ -25,8 +25,8 @@ optional features, so your `Cargo.toml` could look like this:
 
 ```toml
 [dependencies]
-nightfly = { version = "0.1.0" }
-lunatic = { version = "0.11" }
+nightfly = { git = "https://github.com/SquattingSocrates/nightfly" }
+lunatic = { git = "https://github.com/lunatic-solutions/lunatic-rs" }
 ```
 
 And then the code:
@@ -35,31 +35,11 @@ And then the code:
 use std::collections::HashMap;
 
 #[lunatic::main]
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let resp = nightfly::get("https://httpbin.org/ip")
-        
+        .unwrap()
         .json::<HashMap<String, String>>()
-        ;
-    println!("{:#?}", resp);
-    Ok(())
-}
-```
-
-## Blocking Client
-
-There is an optional "blocking" client API that can be enabled:
-
-```toml
-[dependencies]
-nightfly = { version = "0.11", features = ["blocking", "json"] }
-```
-
-```rust,no_run
-use std::collections::HashMap;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let resp = nightfly::blocking::get("https://httpbin.org/ip")?
-        .json::<HashMap<String, String>>()?;
+        .unwrap();
     println!("{:#?}", resp);
     Ok(())
 }
@@ -67,18 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Requirements
 
-On Linux:
-
-- OpenSSL 1.0.1, 1.0.2, 1.1.0, or 1.1.1 with headers (see https://github.com/sfackler/rust-openssl)
-
-On Windows and macOS:
-
-- Nothing.
-
-Reqwest uses [rust-native-tls](https://github.com/sfackler/rust-native-tls),
-which will use the operating system TLS framework if available, meaning Windows
-and macOS. On Linux, it will use OpenSSL 1.1.
-
+- A running version of the [lunatic VM](https://github.com/lunatic-solutions/lunatic).
 
 ## License
 

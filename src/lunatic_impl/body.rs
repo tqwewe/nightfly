@@ -62,10 +62,7 @@ impl Read for Body {
     }
 }
 
-use std::{
-    convert::TryInto,
-    io::{Cursor, Read},
-};
+use std::io::{Cursor, Read};
 
 use thiserror::Error;
 

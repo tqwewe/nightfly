@@ -47,7 +47,7 @@ http = "0.2"
 http-body = "0.4.5"
 httparse = "1.7.1"
 ipnet = "2.5.0"
-lunatic = {path = "../rust-lib"}
+lunatic = {git = "https://github.com/lunatic-solutions/lunatic-rs"}
 lunatic-log = "0.2"
 mime = "0.3.16"
 percent-encoding = "2.2.0"

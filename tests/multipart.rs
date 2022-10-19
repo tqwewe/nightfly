@@ -3,11 +3,11 @@ mod support;
 use futures_util::stream::StreamExt;
 use support::*;
 
-#[tokio::test]
+#[lunatic::test]
 fn text_part() {
     let _ = env_logger::try_init();
 
-    let form = reqwest::multipart::Form::new().text("foo", "bar");
+    let form = nightfly::multipart::Form::new().text("foo", "bar");
 
     let expected_body = format!(
         "\
@@ -45,14 +45,14 @@ fn text_part() {
 
     let url = format!("http://{}/multipart/1", server.addr());
 
-    let res = reqwest::Client::new()
+    let res = nightfly::Client::new()
         .post(&url)
         .multipart(form)
         .send()
         .unwrap();
 
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }
 
 #[cfg(feature = "blocking")]
@@ -60,7 +60,7 @@ fn text_part() {
 fn blocking_file_part() {
     let _ = env_logger::try_init();
 
-    let form = reqwest::blocking::multipart::Form::new()
+    let form = nightfly::blocking::multipart::Form::new()
         .file("foo", "Cargo.lock")
         .unwrap();
 
@@ -105,12 +105,12 @@ fn blocking_file_part() {
 
     let url = format!("http://{}/multipart/2", server.addr());
 
-    let res = reqwest::blocking::Client::new()
+    let res = nightfly::blocking::Client::new()
         .post(&url)
         .multipart(form)
         .send()
         .unwrap();
 
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }

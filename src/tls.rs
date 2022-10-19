@@ -64,7 +64,7 @@ impl Certificate {
     /// let mut buf = Vec::new();
     /// File::open("my_cert.der")?
     ///     .read_to_end(&mut buf)?;
-    /// let cert = reqwest::Certificate::from_der(&buf)?;
+    /// let cert = nightfly::Certificate::from_der(&buf)?;
     /// # drop(cert);
     /// # Ok(())
     /// # }
@@ -89,7 +89,7 @@ impl Certificate {
     /// let mut buf = Vec::new();
     /// File::open("my_cert.pem")?
     ///     .read_to_end(&mut buf)?;
-    /// let cert = reqwest::Certificate::from_pem(&buf)?;
+    /// let cert = nightfly::Certificate::from_pem(&buf)?;
     /// # drop(cert);
     /// # Ok(())
     /// # }
@@ -160,7 +160,7 @@ impl Identity {
     /// let mut buf = Vec::new();
     /// File::open("my-ident.pfx")?
     ///     .read_to_end(&mut buf)?;
-    /// let pkcs12 = reqwest::Identity::from_pkcs12_der(&buf, "my-privkey-password")?;
+    /// let pkcs12 = nightfly::Identity::from_pkcs12_der(&buf, "my-privkey-password")?;
     /// # drop(pkcs12);
     /// # Ok(())
     /// # }
@@ -195,7 +195,7 @@ impl Identity {
     /// let mut buf = Vec::new();
     /// File::open("my-ident.pem")?
     ///     .read_to_end(&mut buf)?;
-    /// let id = reqwest::Identity::from_pem(&buf)?;
+    /// let id = nightfly::Identity::from_pem(&buf)?;
     /// # drop(id);
     /// # Ok(())
     /// # }

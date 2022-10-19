@@ -19,6 +19,7 @@ use crate::{Body, Method, Url};
 use http::{request::Parts, Request as HttpRequest, Version};
 
 /// A request which can be executed with `Client::execute()`.
+#[derive(Clone)]
 pub struct Request {
     pub(crate) method: Method,
     pub(crate) url: Url,
@@ -233,10 +234,10 @@ impl RequestBuilder {
     /// Enable HTTP basic authentication.
     ///
     /// ```rust
-    /// # use reqwest::Error;
+    /// # use nightfly::Error;
     ///
     /// # fn run() -> Result<(), Error> {
-    /// let client = reqwest::Client::new();
+    /// let client = nightfly::Client::new();
     /// let resp = client.delete("http://httpbin.org/delete")
     ///     .basic_auth("admin", Some("good password"))
     ///     .send()
@@ -271,9 +272,21 @@ impl RequestBuilder {
         self.header_sensitive(crate::header::AUTHORIZATION, header_value, true)
     }
 
+    /// Set a body that can be turned into a `Body`
+    pub fn body<T: Into<Body>>(mut self, body: T) -> RequestBuilder {
+        if let Ok(ref mut req) = self.request {
+            *req.body_mut() = Some(body.into());
+        }
+        self
+    }
+
     /// Set the request body as json.
     pub fn json<T: Serialize>(mut self, body: T) -> RequestBuilder {
         if let Ok(ref mut req) = self.request {
+            req.headers_mut().append(
+                "content-type",
+                HeaderValue::from_str("application/json").unwrap(),
+            );
             *req.body_mut() = match Body::json(body) {
                 Ok(d) => Some(d),
                 Err(_) => None,
@@ -308,11 +321,11 @@ impl RequestBuilder {
     /// Sends a multipart/form-data body.
     ///
     /// ```
-    /// # use reqwest::Error;
+    /// # use nightfly::Error;
     ///
     /// # fn run() -> Result<(), Error> {
-    /// let client = reqwest::Client::new();
-    /// let form = reqwest::multipart::Form::new()
+    /// let client = nightfly::Client::new();
+    /// let form = nightfly::multipart::Form::new()
     ///     .text("key3", "value3")
     ///     .text("key4", "value4");
     ///
@@ -398,14 +411,14 @@ impl RequestBuilder {
     /// header.
     ///
     /// ```rust
-    /// # use reqwest::Error;
+    /// # use nightfly::Error;
     /// # use std::collections::HashMap;
     /// #
     /// # fn run() -> Result<(), Error> {
     /// let mut params = HashMap::new();
     /// params.insert("lang", "rust");
     ///
-    /// let client = reqwest::Client::new();
+    /// let client = nightfly::Client::new();
     /// let res = client.post("http://httpbin.org")
     ///     .form(&params)
     ///     .send()
@@ -498,10 +511,10 @@ impl RequestBuilder {
     /// # Example
     ///
     /// ```no_run
-    /// # use reqwest::Error;
+    /// # use nightfly::Error;
     /// #
     /// # fn run() -> Result<(), Error> {
-    /// let response = reqwest::Client::new()
+    /// let response = nightfly::Client::new()
     ///     .get("https://hyper.rs")
     ///     .send()
     ///     ;
@@ -523,10 +536,10 @@ impl RequestBuilder {
     // /// # Examples
     // ///
     // /// ```
-    // /// # use reqwest::Error;
+    // /// # use nightfly::Error;
     // /// #
     // /// # fn run() -> Result<(), Error> {
-    // /// let client = reqwest::Client::new();
+    // /// let client = nightfly::Client::new();
     // /// let builder = client.post("http://httpbin.org/post")
     // ///     .body("from a &str!");
     // /// let clone = builder.try_clone();

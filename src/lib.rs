@@ -2,11 +2,11 @@
 #![deny(missing_debug_implementations)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 // #![cfg_attr(test, deny(warnings))]
-#![doc(html_root_url = "https://docs.rs/reqwest/0.11.12")]
+#![doc(html_root_url = "https://docs.rs/nightfly/0.11.12")]
 
-//! # reqwest
+//! # nightfly
 //!
-//! The `reqwest` crate provides a convenient, higher-level HTTP
+//! The `nightfly` crate provides a convenient, higher-level HTTP
 //! [`Client`][client].
 //!
 //! It handles many of the things that most people just expect an HTTP client
@@ -19,22 +19,22 @@
 //! - Uses system-native [TLS](#tls)
 //! - Cookies
 //!
-//! The [`reqwest::Client`][client] is asynchronous. For applications wishing
-//! to only make a few HTTP requests, the [`reqwest::blocking`](blocking) API
+//! The [`nightfly::Client`][client] is asynchronous. For applications wishing
+//! to only make a few HTTP requests, the [`nightfly::blocking`](blocking) API
 //! may be more convenient.
 //!
 //! Additional learning resources include:
 //!
 //! - [The Rust Cookbook](https://rust-lang-nursery.github.io/rust-cookbook/web/clients.html)
-//! - [Reqwest Repository Examples](https://github.com/seanmonstar/reqwest/tree/master/examples)
+//! - [Reqwest Repository Examples](https://github.com/seanmonstar/nightfly/tree/master/examples)
 //!
 //! ## Making a GET request
 //!
 //! For a single request, you can use the [`get`][get] shortcut method.
 //!
 //! ```rust
-//! # fn run() -> Result<(), reqwest::Error> {
-//! let body = reqwest::get("https://www.rust-lang.org")
+//! # fn run() -> Result<(), nightfly::Error> {
+//! let body = nightfly::get("https://www.rust-lang.org")
 //!     
 //!     .text()
 //!     ;
@@ -54,13 +54,13 @@
 //! by using the `body()` method of a [`RequestBuilder`][builder]. This lets you set the
 //! exact raw bytes of what the body should be. It accepts various types,
 //! including `String` and `Vec<u8>`. If you wish to pass a custom
-//! type, you can use the `reqwest::Body` constructors.
+//! type, you can use the `nightfly::Body` constructors.
 //!
 //! ```rust
-//! # use reqwest::Error;
+//! # use nightfly::Error;
 //! #
 //! # fn run() -> Result<(), Error> {
-//! let client = reqwest::Client::new();
+//! let client = nightfly::Client::new();
 //! let res = client.post("http://httpbin.org/post")
 //!     .body("the exact body that is sent")
 //!     .send()
@@ -78,12 +78,12 @@
 //! implements [`Serialize`][serde].
 //!
 //! ```rust
-//! # use reqwest::Error;
+//! # use nightfly::Error;
 //! #
 //! # fn run() -> Result<(), Error> {
 //! // This will POST a body of `foo=bar&baz=quux`
 //! let params = [("foo", "bar"), ("baz", "quux")];
-//! let client = reqwest::Client::new();
+//! let client = nightfly::Client::new();
 //! let res = client.post("http://httpbin.org/post")
 //!     .form(&params)
 //!     .send()
@@ -99,7 +99,7 @@
 //! serialized into JSON. The feature `json` is required.
 //!
 //! ```rust
-//! # use reqwest::Error;
+//! # use nightfly::Error;
 //! # use std::collections::HashMap;
 //! #
 //! # #[cfg(feature = "json")]
@@ -109,7 +109,7 @@
 //! map.insert("lang", "rust");
 //! map.insert("body", "json");
 //!
-//! let client = reqwest::Client::new();
+//! let client = nightfly::Client::new();
 //! let res = client.post("http://httpbin.org/post")
 //!     .json(&map)
 //!     .send()
@@ -139,7 +139,7 @@
 //! `HTTPS_PROXY` or `https_proxy` provide HTTPS proxies for HTTPS connections.
 //!
 //! These can be overwritten by adding a [`Proxy`](Proxy) to `ClientBuilder`
-//! i.e. `let proxy = reqwest::Proxy::http("https://secure.example")?;`
+//! i.e. `let proxy = nightfly::Proxy::http("https://secure.example")?;`
 //! or disabled by calling `ClientBuilder::no_proxy()`.
 //!
 //! `socks` feature is required if you have configured socks proxy like this:
@@ -227,7 +227,7 @@ pub use self::response::ResponseBuilderExt;
 
 /// Shortcut method to quickly make a `GET` request.
 ///
-/// See also the methods on the [`reqwest::Response`](./struct.Response.html)
+/// See also the methods on the [`nightfly::Response`](./struct.Response.html)
 /// type.
 ///
 /// **NOTE**: This function creates a new internal `Client` on each call,
@@ -237,8 +237,8 @@ pub use self::response::ResponseBuilderExt;
 /// # Examples
 ///
 /// ```rust
-/// # fn run() -> Result<(), reqwest::Error> {
-/// let body = reqwest::get("https://www.rust-lang.org")
+/// # fn run() -> Result<(), nightfly::Error> {
+/// let body = nightfly::get("https://www.rust-lang.org")
 ///     .text();
 /// # Ok(())
 /// # }

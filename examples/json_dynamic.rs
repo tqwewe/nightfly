@@ -4,23 +4,28 @@
 //! really care about the structure of the JSON and just need to display it or
 //! process it at runtime.
 
+use lunatic::Mailbox;
+
 #[lunatic::main]
-fn main() -> Result<(), reqwest::Error> {
-    let echo_json: serde_json::Value = reqwest::Client::new()
-        .post("https://jsonplaceholder.typicode.com/posts")
+fn main(_: Mailbox<()>) -> Result<(), nightfly::Error> {
+    let echo_json: serde_json::Value = nightfly::Client::new()
+        // .post("https://jsonplaceholder.typicode.com/posts")
+        .post("http://eu.httpbin.org/anything")
         .json(&serde_json::json!({
             "title": "Reqwest.rs",
-            "body": "https://docs.rs/reqwest",
+            "body": "https://docs.rs/nightfly",
             "userId": 1
         }))
         .send()
-        .json();
+        .unwrap()
+        .json()
+        .unwrap();
 
     println!("{:#?}", echo_json);
     // Object(
     //     {
     //         "body": String(
-    //             "https://docs.rs/reqwest"
+    //             "https://docs.rs/nightfly"
     //         ),
     //         "id": Number(
     //             101
@@ -33,5 +38,5 @@ fn main() -> Result<(), reqwest::Error> {
     //         )
     //     }
     // )
-    Ok(())
+    // Ok(())
 }

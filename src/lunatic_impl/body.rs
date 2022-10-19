@@ -1,13 +1,25 @@
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 /// Body struct
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct Body(Vec<u8>);
 
 impl Into<Body> for String {
     fn into(self) -> Body {
-        // Body(S::serialize(self))
         Body(self.into())
+    }
+}
+
+impl Into<Body> for Bytes {
+    fn into(self) -> Body {
+        Body(self.into())
+    }
+}
+
+impl Into<Bytes> for Body {
+    fn into(self) -> Bytes {
+        Bytes::from(self.0)
     }
 }
 

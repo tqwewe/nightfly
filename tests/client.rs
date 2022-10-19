@@ -3,9 +3,9 @@ mod support;
 use futures_util::stream::StreamExt;
 use support::*;
 
-use reqwest::Client;
+use nightfly::Client;
 
-#[tokio::test]
+#[lunatic::test]
 fn auto_headers() {
     let server = server::http(move |req| async move {
         assert_eq!(req.method(), "GET");
@@ -35,7 +35,7 @@ fn auto_headers() {
     });
 
     let url = format!("http://{}/1", server.addr());
-    let res = reqwest::Client::builder()
+    let res = nightfly::Client::builder()
         .no_proxy()
         .build()
         .unwrap()
@@ -44,30 +44,30 @@ fn auto_headers() {
         .unwrap();
 
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
     assert_eq!(res.remote_addr(), Some(server.addr()));
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn user_agent() {
     let server = server::http(move |req| async move {
-        assert_eq!(req.headers()["user-agent"], "reqwest-test-agent");
+        assert_eq!(req.headers()["user-agent"], "nightfly-test-agent");
         http::Response::default()
     });
 
     let url = format!("http://{}/ua", server.addr());
-    let res = reqwest::Client::builder()
-        .user_agent("reqwest-test-agent")
+    let res = nightfly::Client::builder()
+        .user_agent("nightfly-test-agent")
         .build()
         .expect("client builder")
         .get(&url)
         .send()
         .expect("request");
 
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn response_text() {
     let _ = env_logger::try_init();
 
@@ -84,7 +84,7 @@ fn response_text() {
     assert_eq!("Hello", text);
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn response_bytes() {
     let _ = env_logger::try_init();
 
@@ -101,7 +101,7 @@ fn response_bytes() {
     assert_eq!("Hello", bytes);
 }
 
-#[tokio::test]
+#[lunatic::test]
 #[cfg(feature = "json")]
 fn response_json() {
     let _ = env_logger::try_init();
@@ -118,7 +118,7 @@ fn response_json() {
     assert_eq!("Hello", text);
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn body_pipe_response() {
     let _ = env_logger::try_init();
 
@@ -147,7 +147,7 @@ fn body_pipe_response() {
         .send()
         .expect("get1");
 
-    assert_eq!(res1.status(), reqwest::StatusCode::OK);
+    assert_eq!(res1.status(), nightfly::StatusCode::OK);
     assert_eq!(res1.content_length(), Some(7));
 
     // and now ensure we can "pipe" the response to another request
@@ -157,10 +157,10 @@ fn body_pipe_response() {
         .send()
         .expect("res2");
 
-    assert_eq!(res2.status(), reqwest::StatusCode::OK);
+    assert_eq!(res2.status(), nightfly::StatusCode::OK);
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn overridden_dns_resolution_with_gai() {
     let _ = env_logger::builder().is_test(true).try_init();
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
@@ -171,19 +171,19 @@ fn overridden_dns_resolution_with_gai() {
         overridden_domain,
         server.addr().port()
     );
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .resolve(overridden_domain, server.addr())
         .build()
         .expect("client builder");
     let req = client.get(&url);
     let res = req.send().expect("request");
 
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
     let text = res.text().expect("Failed to get text");
     assert_eq!("Hello", text);
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn overridden_dns_resolution_with_gai_multiple() {
     let _ = env_logger::builder().is_test(true).try_init();
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
@@ -196,7 +196,7 @@ fn overridden_dns_resolution_with_gai_multiple() {
     );
     // the server runs on IPv4 localhost, so provide both IPv4 and IPv6 and let the happy eyeballs
     // algorithm decide which address to use.
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .resolve_to_addrs(
             overridden_domain,
             &[
@@ -212,13 +212,13 @@ fn overridden_dns_resolution_with_gai_multiple() {
     let req = client.get(&url);
     let res = req.send().expect("request");
 
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
     let text = res.text().expect("Failed to get text");
     assert_eq!("Hello", text);
 }
 
 #[cfg(feature = "trust-dns")]
-#[tokio::test]
+#[lunatic::test]
 fn overridden_dns_resolution_with_trust_dns() {
     let _ = env_logger::builder().is_test(true).try_init();
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
@@ -229,7 +229,7 @@ fn overridden_dns_resolution_with_trust_dns() {
         overridden_domain,
         server.addr().port()
     );
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .resolve(overridden_domain, server.addr())
         .trust_dns(true)
         .build()
@@ -237,13 +237,13 @@ fn overridden_dns_resolution_with_trust_dns() {
     let req = client.get(&url);
     let res = req.send().expect("request");
 
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
     let text = res.text().expect("Failed to get text");
     assert_eq!("Hello", text);
 }
 
 #[cfg(feature = "trust-dns")]
-#[tokio::test]
+#[lunatic::test]
 fn overridden_dns_resolution_with_trust_dns_multiple() {
     let _ = env_logger::builder().is_test(true).try_init();
     let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
@@ -256,7 +256,7 @@ fn overridden_dns_resolution_with_trust_dns_multiple() {
     );
     // the server runs on IPv4 localhost, so provide both IPv4 and IPv6 and let the happy eyeballs
     // algorithm decide which address to use.
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .resolve_to_addrs(
             overridden_domain,
             &[
@@ -273,7 +273,7 @@ fn overridden_dns_resolution_with_trust_dns_multiple() {
     let req = client.get(&url);
     let res = req.send().expect("request");
 
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
     let text = res.text().expect("Failed to get text");
     assert_eq!("Hello", text);
 }
@@ -283,7 +283,7 @@ fn overridden_dns_resolution_with_trust_dns_multiple() {
 fn use_preconfigured_tls_with_bogus_backend() {
     struct DefinitelyNotTls;
 
-    reqwest::Client::builder()
+    nightfly::Client::builder()
         .use_preconfigured_tls(DefinitelyNotTls)
         .build()
         .expect_err("definitely is not TLS");
@@ -298,7 +298,7 @@ fn use_preconfigured_native_tls_default() {
         .build()
         .expect("tls builder");
 
-    reqwest::Client::builder()
+    nightfly::Client::builder()
         .use_preconfigured_tls(tls)
         .build()
         .expect("preconfigured default tls");
@@ -315,20 +315,20 @@ fn use_preconfigured_rustls_default() {
         .with_root_certificates(root_cert_store)
         .with_no_client_auth();
 
-    reqwest::Client::builder()
+    nightfly::Client::builder()
         .use_preconfigured_tls(tls)
         .build()
         .expect("preconfigured rustls tls");
 }
 
 #[cfg(feature = "__rustls")]
-#[tokio::test]
+#[lunatic::test]
 #[ignore = "Needs TLS support in the test server"]
 fn http2_upgrade() {
     let server = server::http(move |_| async move { http::Response::default() });
 
     let url = format!("https://localhost:{}", server.addr().port());
-    let res = reqwest::Client::builder()
+    let res = nightfly::Client::builder()
         .danger_accept_invalid_certs(true)
         .use_rustls_tls()
         .build()
@@ -337,14 +337,14 @@ fn http2_upgrade() {
         .send()
         .expect("request");
 
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
-    assert_eq!(res.version(), reqwest::Version::HTTP_2);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
+    assert_eq!(res.version(), nightfly::Version::HTTP_2);
 }
 
 #[cfg(feature = "default-tls")]
-#[tokio::test]
+#[lunatic::test]
 fn test_allowed_methods() {
-    let resp = reqwest::Client::builder()
+    let resp = nightfly::Client::builder()
         .https_only(true)
         .build()
         .expect("client builder")
@@ -353,7 +353,7 @@ fn test_allowed_methods() {
 
     assert!(resp.is_ok());
 
-    let resp = reqwest::Client::builder()
+    let resp = nightfly::Client::builder()
         .https_only(true)
         .build()
         .expect("client builder")

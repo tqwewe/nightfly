@@ -3,17 +3,17 @@ use support::*;
 
 use std::io::Write;
 
-#[tokio::test]
+#[lunatic::test]
 fn gzip_response() {
     gzip_case(10_000, 4096);
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn gzip_single_byte_chunks() {
     gzip_case(10, 1);
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_gzip_empty_body() {
     let server = server::http(move |req| async move {
         assert_eq!(req.method(), "HEAD");
@@ -25,7 +25,7 @@ fn test_gzip_empty_body() {
             .unwrap()
     });
 
-    let client = reqwest::Client::new();
+    let client = nightfly::Client::new();
     let res = client
         .head(&format!("http://{}/gzip", server.addr()))
         .send()
@@ -36,7 +36,7 @@ fn test_gzip_empty_body() {
     assert_eq!(body, "");
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_accept_header_is_not_changed_if_set() {
     let server = server::http(move |req| async move {
         assert_eq!(req.headers()["accept"], "application/json");
@@ -47,21 +47,21 @@ fn test_accept_header_is_not_changed_if_set() {
         http::Response::default()
     });
 
-    let client = reqwest::Client::new();
+    let client = nightfly::Client::new();
 
     let res = client
         .get(&format!("http://{}/accept", server.addr()))
         .header(
-            reqwest::header::ACCEPT,
-            reqwest::header::HeaderValue::from_static("application/json"),
+            nightfly::header::ACCEPT,
+            nightfly::header::HeaderValue::from_static("application/json"),
         )
         .send()
         .unwrap();
 
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_accept_encoding_header_is_not_changed_if_set() {
     let server = server::http(move |req| async move {
         assert_eq!(req.headers()["accept"], "*/*");
@@ -69,18 +69,18 @@ fn test_accept_encoding_header_is_not_changed_if_set() {
         http::Response::default()
     });
 
-    let client = reqwest::Client::new();
+    let client = nightfly::Client::new();
 
     let res = client
         .get(&format!("http://{}/accept-encoding", server.addr()))
         .header(
-            reqwest::header::ACCEPT_ENCODING,
-            reqwest::header::HeaderValue::from_static("identity"),
+            nightfly::header::ACCEPT_ENCODING,
+            nightfly::header::HeaderValue::from_static("identity"),
         )
         .send()
         .unwrap();
 
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }
 
 fn gzip_case(response_size: usize, chunk_size: usize) {
@@ -136,7 +136,7 @@ fn gzip_case(response_size: usize, chunk_size: usize) {
         }
     });
 
-    let client = reqwest::Client::new();
+    let client = nightfly::Client::new();
 
     let res = client
         .get(&format!("http://{}/gzip", server.addr()))

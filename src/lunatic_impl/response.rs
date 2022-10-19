@@ -9,6 +9,7 @@ use bytes::Bytes;
 use encoding_rs::{Encoding, UTF_8};
 use http::{HeaderMap, HeaderValue, StatusCode, Version};
 use mime::Mime;
+use serde::de::DeserializeOwned;
 #[cfg(feature = "json")]
 use serde::de::DeserializeOwned;
 #[cfg(feature = "json")]
@@ -123,6 +124,7 @@ impl HttpResponse {
     /// - The response is compressed and automatically decoded (thus changing
     ///   the actual decoded length).
     pub fn content_length(&self) -> Option<u64> {
+        // add 12 because there are 3 pairs of \r\n which take up 4 bytes/octects each
         Some(self.body().len() as u64)
     }
 
@@ -177,7 +179,7 @@ impl HttpResponse {
     ///
     /// ```
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let content = reqwest::get("http://httpbin.org/range/26")
+    /// let content = nightfly::get("http://httpbin.org/range/26")
     ///     .text();
     ///
     /// println!("text: {:?}", content);
@@ -202,7 +204,7 @@ impl HttpResponse {
     ///
     /// ```
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let content = reqwest::get("http://httpbin.org/range/26")
+    /// let content = nightfly::get("http://httpbin.org/range/26")
     ///     
     ///     .text_with_charset("utf-8")
     ///     ;
@@ -245,10 +247,10 @@ impl HttpResponse {
     /// # Examples
     ///
     /// ```
-    /// # extern crate reqwest;
+    /// # extern crate nightfly;
     /// # extern crate serde;
     /// #
-    /// # use reqwest::Error;
+    /// # use nightfly::Error;
     /// # use serde::Deserialize;
     /// #
     /// // This `derive` requires the `serde` dependency.
@@ -258,7 +260,7 @@ impl HttpResponse {
     /// }
     ///
     /// # fn run() -> Result<(), Error> {
-    /// let ip = reqwest::get("http://httpbin.org/ip")
+    /// let ip = nightfly::get("http://httpbin.org/ip")
     ///     
     ///     .json::<Ip>()
     ///     ;
@@ -277,10 +279,10 @@ impl HttpResponse {
     /// details please see [`serde_json::from_reader`].
     ///
     /// [`serde_json::from_reader`]: https://docs.serde.rs/serde_json/fn.from_reader.html
-    #[cfg(feature = "json")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
+    // #[cfg(feature = "json")]
+    // #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
     pub fn json<T: DeserializeOwned>(self) -> crate::Result<T> {
-        let full = self.bytes();
+        let full = self.body();
 
         serde_json::from_slice(&full).map_err(crate::error::decode)
     }
@@ -291,7 +293,7 @@ impl HttpResponse {
     // ///
     // /// ```
     // /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    // /// let bytes = reqwest::get("http://httpbin.org/ip")
+    // /// let bytes = nightfly::get("http://httpbin.org/ip")
     // ///
     // ///     .bytes()
     // ///     ;
@@ -317,7 +319,7 @@ impl HttpResponse {
     ///
     /// ```
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut res = reqwest::get("https://hyper.rs");
+    /// let mut res = nightfly::get("https://hyper.rs");
     ///
     /// while let Some(chunk) = res.chunk() {
     ///     println!("Chunk: {:?}", chunk);
@@ -340,7 +342,7 @@ impl HttpResponse {
     /// # Example
     ///
     /// ```
-    /// # use reqwest::Response;
+    /// # use nightfly::Response;
     /// fn on_response(res: Response) {
     ///     match res.error_for_status() {
     ///         Ok(_res) => (),
@@ -349,7 +351,7 @@ impl HttpResponse {
     ///             // it could be any status between 400...599
     ///             assert_eq!(
     ///                 err.status(),
-    ///                 Some(reqwest::StatusCode::BAD_REQUEST)
+    ///                 Some(nightfly::StatusCode::BAD_REQUEST)
     ///             );
     ///         }
     ///     }
@@ -370,7 +372,7 @@ impl HttpResponse {
     /// # Example
     ///
     /// ```
-    /// # use reqwest::Response;
+    /// # use nightfly::Response;
     /// fn on_response(res: &Response) {
     ///     match res.error_for_status_ref() {
     ///         Ok(_res) => (),
@@ -379,7 +381,7 @@ impl HttpResponse {
     ///             // it could be any status between 400...599
     ///             assert_eq!(
     ///                 err.status(),
-    ///                 Some(reqwest::StatusCode::BAD_REQUEST)
+    ///                 Some(nightfly::StatusCode::BAD_REQUEST)
     ///             );
     ///         }
     ///     }

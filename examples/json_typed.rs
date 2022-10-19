@@ -4,6 +4,9 @@
 //! Rust compile-time type system guaranties though it requires a little bit
 //! more code.
 
+use std::collections::HashMap;
+
+use lunatic::Mailbox;
 // These require the `serde` dependency.
 use serde::{Deserialize, Serialize};
 
@@ -16,21 +19,36 @@ struct Post {
     user_id: i32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct AnythingResponse<T> {
+    args: HashMap<String, String>,
+    data: String,
+    files: HashMap<String, String>,
+    form: HashMap<String, String>,
+    headers: HashMap<String, String>,
+    json: Option<T>,
+    method: String,
+    origin: String,
+    url: String,
+}
+
 // This is using the `lunatic` runtime
 //
 #[lunatic::main]
-fn main() -> Result<(), reqwest::Error> {
+fn main(_: Mailbox<()>) -> Result<(), nightfly::Error> {
     let new_post = Post {
         id: None,
         title: "Reqwest.rs".into(),
-        body: "https://docs.rs/reqwest".into(),
+        body: "https://docs.rs/nightfly".into(),
         user_id: 1,
     };
-    let new_post: Post = reqwest::Client::new()
-        .post("https://jsonplaceholder.typicode.com/posts")
+    let new_post: AnythingResponse<Post> = nightfly::Client::new()
+        .post("http://eu.httpbin.org/anything")
         .json(&new_post)
         .send()
-        .json();
+        .unwrap()
+        .json()
+        .unwrap();
 
     println!("{:#?}", new_post);
     // Post {
@@ -38,8 +56,8 @@ fn main() -> Result<(), reqwest::Error> {
     //         101
     //     ),
     //     title: "Reqwest.rs",
-    //     body: "https://docs.rs/reqwest",
+    //     body: "https://docs.rs/nightfly",
     //     user_id: 1
     // }
-    Ok(())
+    // Ok(())
 }

@@ -3,13 +3,14 @@
 // This is using the `lunatic` runtime.
 //
 #[lunatic::main]
-fn main() -> Result<(), reqwest::Error> {
+fn main() -> Result<(), nightfly::Error> {
     // Make sure you are running tor and this is your socks port
-    let proxy = reqwest::Proxy::all("socks5h://127.0.0.1:9050").expect("tor proxy should be there");
-    let client = reqwest::Client::builder()
+    let proxy =
+        nightfly::Proxy::all("socks5h://127.0.0.1:9050").expect("tor proxy should be there");
+    let client = nightfly::Client::builder()
         .proxy(proxy)
         .build()
-        .expect("should be able to build reqwest client");
+        .expect("should be able to build nightfly client");
 
     let res = client.get("https://check.torproject.org").send();
     println!("Status: {}", res.status());

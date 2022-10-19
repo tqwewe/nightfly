@@ -1,9 +1,7 @@
-#![cfg(not(target_arch = "wasm32"))]
-
 #[cfg(all(feature = "__tls", not(feature = "rustls-tls-manual-roots")))]
-#[tokio::test]
+#[lunatic::test]
 fn test_badssl_modern() {
-    let text = reqwest::Client::builder()
+    let text = nightfly::Client::builder()
         .no_proxy()
         .build()
         .unwrap()
@@ -20,9 +18,9 @@ fn test_badssl_modern() {
     feature = "rustls-tls-webpki-roots",
     feature = "rustls-tls-native-roots"
 ))]
-#[tokio::test]
+#[lunatic::test]
 fn test_rustls_badssl_modern() {
-    let text = reqwest::Client::builder()
+    let text = nightfly::Client::builder()
         .use_rustls_tls()
         .no_proxy()
         .build()
@@ -37,9 +35,9 @@ fn test_rustls_badssl_modern() {
 }
 
 #[cfg(feature = "__tls")]
-#[tokio::test]
+#[lunatic::test]
 fn test_badssl_self_signed() {
-    let text = reqwest::Client::builder()
+    let text = nightfly::Client::builder()
         .danger_accept_invalid_certs(true)
         .no_proxy()
         .build()
@@ -54,9 +52,9 @@ fn test_badssl_self_signed() {
 }
 
 #[cfg(feature = "__tls")]
-#[tokio::test]
+#[lunatic::test]
 fn test_badssl_no_built_in_roots() {
-    let result = reqwest::Client::builder()
+    let result = nightfly::Client::builder()
         .tls_built_in_root_certs(false)
         .no_proxy()
         .build()
@@ -68,9 +66,9 @@ fn test_badssl_no_built_in_roots() {
 }
 
 #[cfg(feature = "native-tls")]
-#[tokio::test]
+#[lunatic::test]
 fn test_badssl_wrong_host() {
-    let text = reqwest::Client::builder()
+    let text = nightfly::Client::builder()
         .danger_accept_invalid_hostnames(true)
         .no_proxy()
         .build()
@@ -83,7 +81,7 @@ fn test_badssl_wrong_host() {
 
     assert!(text.contains("<title>wrong.host.badssl.com</title>"));
 
-    let result = reqwest::Client::builder()
+    let result = nightfly::Client::builder()
         .danger_accept_invalid_hostnames(true)
         .build()
         .unwrap()

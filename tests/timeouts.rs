@@ -4,19 +4,19 @@ use support::*;
 
 use std::time::Duration;
 
-#[tokio::test]
+#[lunatic::test]
 fn client_timeout() {
     let _ = env_logger::try_init();
 
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2));
+            lunatic::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });
 
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .timeout(Duration::from_millis(500))
         .build()
         .unwrap();
@@ -31,19 +31,19 @@ fn client_timeout() {
     assert_eq!(err.url().map(|u| u.as_str()), Some(url.as_str()));
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn request_timeout() {
     let _ = env_logger::try_init();
 
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2));
+            lunatic::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });
 
-    let client = reqwest::Client::builder().build().unwrap();
+    let client = nightfly::Client::builder().build().unwrap();
 
     let url = format!("http://{}/slow", server.addr());
 
@@ -60,11 +60,11 @@ fn request_timeout() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[tokio::test]
+#[lunatic::test]
 fn connect_timeout() {
     let _ = env_logger::try_init();
 
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .connect_timeout(Duration::from_millis(100))
         .build()
         .unwrap();
@@ -78,7 +78,7 @@ fn connect_timeout() {
     assert!(err.is_connect() && err.is_timeout());
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn response_timeout() {
     let _ = env_logger::try_init();
 
@@ -86,7 +86,7 @@ fn response_timeout() {
         async {
             // immediate response, but delayed body
             let body = hyper::Body::wrap_stream(futures_util::stream::once(async {
-                tokio::time::sleep(Duration::from_secs(2));
+                lunatic::time::sleep(Duration::from_secs(2));
                 Ok::<_, std::convert::Infallible>("Hello")
             }));
 
@@ -94,7 +94,7 @@ fn response_timeout() {
         }
     });
 
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .timeout(Duration::from_millis(500))
         .no_proxy()
         .build()
@@ -118,7 +118,7 @@ fn timeout_closes_connection() {
 
     // Make Client drop *after* the Server, so the background doesn't
     // close too early.
-    let client = reqwest::blocking::Client::builder()
+    let client = nightfly::blocking::Client::builder()
         .timeout(Duration::from_millis(500))
         .build()
         .unwrap();
@@ -126,7 +126,7 @@ fn timeout_closes_connection() {
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2));
+            lunatic::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });
@@ -145,12 +145,12 @@ fn timeout_blocking_request() {
 
     // Make Client drop *after* the Server, so the background doesn't
     // close too early.
-    let client = reqwest::blocking::Client::builder().build().unwrap();
+    let client = nightfly::blocking::Client::builder().build().unwrap();
 
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2));
+            lunatic::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });
@@ -171,7 +171,7 @@ fn timeout_blocking_request() {
 fn blocking_request_timeout_body() {
     let _ = env_logger::try_init();
 
-    let client = reqwest::blocking::Client::builder()
+    let client = nightfly::blocking::Client::builder()
         // this should be overridden
         .connect_timeout(Duration::from_millis(200))
         // this should be overridden
@@ -183,7 +183,7 @@ fn blocking_request_timeout_body() {
         async {
             // immediate response, but delayed body
             let body = hyper::Body::wrap_stream(futures_util::stream::once(async {
-                tokio::time::sleep(Duration::from_secs(1));
+                lunatic::time::sleep(Duration::from_secs(1));
                 Ok::<_, std::convert::Infallible>("Hello")
             }));
 
@@ -212,7 +212,7 @@ fn write_timeout_large_body() {
 
     // Make Client drop *after* the Server, so the background doesn't
     // close too early.
-    let client = reqwest::blocking::Client::builder()
+    let client = nightfly::blocking::Client::builder()
         .timeout(Duration::from_millis(500))
         .build()
         .unwrap();
@@ -220,7 +220,7 @@ fn write_timeout_large_body() {
     let server = server::http(move |_req| {
         async {
             // delay returning the response
-            tokio::time::sleep(Duration::from_secs(2));
+            lunatic::time::sleep(Duration::from_secs(2));
             http::Response::default()
         }
     });
@@ -229,7 +229,7 @@ fn write_timeout_large_body() {
     let url = format!("http://{}/write-timeout", server.addr());
     let err = client
         .post(&url)
-        .body(reqwest::blocking::Body::sized(cursor, len as u64))
+        .body(nightfly::blocking::Body::sized(cursor, len as u64))
         .send()
         .unwrap_err();
 

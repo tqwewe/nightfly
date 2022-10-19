@@ -3,9 +3,9 @@ mod support;
 use futures_util::stream::StreamExt;
 use support::*;
 
-#[tokio::test]
+#[lunatic::test]
 fn test_redirect_301_and_302_and_303_changes_post_to_get() {
-    let client = reqwest::Client::new();
+    let client = nightfly::Client::new();
     let codes = [301u16, 302, 303];
 
     for &code in codes.iter() {
@@ -32,17 +32,17 @@ fn test_redirect_301_and_302_and_303_changes_post_to_get() {
         let dst = format!("http://{}/{}", redirect.addr(), "dst");
         let res = client.post(&url).send().unwrap();
         assert_eq!(res.url().as_str(), dst);
-        assert_eq!(res.status(), reqwest::StatusCode::OK);
+        assert_eq!(res.status(), nightfly::StatusCode::OK);
         assert_eq!(
-            res.headers().get(reqwest::header::SERVER).unwrap(),
+            res.headers().get(nightfly::header::SERVER).unwrap(),
             &"test-dst"
         );
     }
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_redirect_307_and_308_tries_to_get_again() {
-    let client = reqwest::Client::new();
+    let client = nightfly::Client::new();
     let codes = [307u16, 308];
     for &code in codes.iter() {
         let redirect = server::http(move |req| async move {
@@ -68,18 +68,18 @@ fn test_redirect_307_and_308_tries_to_get_again() {
         let dst = format!("http://{}/{}", redirect.addr(), "dst");
         let res = client.get(&url).send().unwrap();
         assert_eq!(res.url().as_str(), dst);
-        assert_eq!(res.status(), reqwest::StatusCode::OK);
+        assert_eq!(res.status(), nightfly::StatusCode::OK);
         assert_eq!(
-            res.headers().get(reqwest::header::SERVER).unwrap(),
+            res.headers().get(nightfly::header::SERVER).unwrap(),
             &"test-dst"
         );
     }
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_redirect_307_and_308_tries_to_post_again() {
     let _ = env_logger::try_init();
-    let client = reqwest::Client::new();
+    let client = nightfly::Client::new();
     let codes = [307u16, 308];
     for &code in codes.iter() {
         let redirect = server::http(move |mut req| async move {
@@ -110,9 +110,9 @@ fn test_redirect_307_and_308_tries_to_post_again() {
         let dst = format!("http://{}/{}", redirect.addr(), "dst");
         let res = client.post(&url).body("Hello").send().unwrap();
         assert_eq!(res.url().as_str(), dst);
-        assert_eq!(res.status(), reqwest::StatusCode::OK);
+        assert_eq!(res.status(), nightfly::StatusCode::OK);
         assert_eq!(
-            res.headers().get(reqwest::header::SERVER).unwrap(),
+            res.headers().get(nightfly::header::SERVER).unwrap(),
             &"test-dst"
         );
     }
@@ -121,7 +121,7 @@ fn test_redirect_307_and_308_tries_to_post_again() {
 #[cfg(feature = "blocking")]
 #[test]
 fn test_redirect_307_does_not_try_if_reader_cannot_reset() {
-    let client = reqwest::blocking::Client::new();
+    let client = nightfly::blocking::Client::new();
     let codes = [307u16, 308];
     for &code in codes.iter() {
         let redirect = server::http(move |mut req| async move {
@@ -143,7 +143,7 @@ fn test_redirect_307_does_not_try_if_reader_cannot_reset() {
         let url = format!("http://{}/{}", redirect.addr(), code);
         let res = client
             .post(&url)
-            .body(reqwest::blocking::Body::new(&b"Hello"[..]))
+            .body(nightfly::blocking::Body::new(&b"Hello"[..]))
             .send()
             .unwrap();
         assert_eq!(res.url().as_str(), url);
@@ -151,9 +151,9 @@ fn test_redirect_307_does_not_try_if_reader_cannot_reset() {
     }
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_redirect_removes_sensitive_headers() {
-    use tokio::sync::watch;
+    use lunatic::sync::watch;
 
     let (tx, rx) = watch::channel::<Option<std::net::SocketAddr>>(None);
 
@@ -185,19 +185,19 @@ fn test_redirect_removes_sensitive_headers() {
 
     tx.send(Some(mid_server.addr())).unwrap();
 
-    reqwest::Client::builder()
+    nightfly::Client::builder()
         .build()
         .unwrap()
         .get(&format!("http://{}/sensitive", mid_server.addr()))
         .header(
-            reqwest::header::COOKIE,
-            reqwest::header::HeaderValue::from_static("foo=bar"),
+            nightfly::header::COOKIE,
+            nightfly::header::HeaderValue::from_static("foo=bar"),
         )
         .send()
         .unwrap();
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_redirect_policy_can_return_errors() {
     let server = server::http(move |req| async move {
         assert_eq!(req.uri(), "/loop");
@@ -209,11 +209,11 @@ fn test_redirect_policy_can_return_errors() {
     });
 
     let url = format!("http://{}/loop", server.addr());
-    let err = reqwest::get(&url).unwrap_err();
+    let err = nightfly::get(&url).unwrap_err();
     assert!(err.is_redirect());
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_redirect_policy_can_stop_redirects_without_an_error() {
     let server = server::http(move |req| async move {
         assert_eq!(req.uri(), "/no-redirect");
@@ -226,8 +226,8 @@ fn test_redirect_policy_can_stop_redirects_without_an_error() {
 
     let url = format!("http://{}/no-redirect", server.addr());
 
-    let res = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
+    let res = nightfly::Client::builder()
+        .redirect(nightfly::redirect::Policy::none())
         .build()
         .unwrap()
         .get(&url)
@@ -235,10 +235,10 @@ fn test_redirect_policy_can_stop_redirects_without_an_error() {
         .unwrap();
 
     assert_eq!(res.url().as_str(), url);
-    assert_eq!(res.status(), reqwest::StatusCode::FOUND);
+    assert_eq!(res.status(), nightfly::StatusCode::FOUND);
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_referer_is_not_set_if_disabled() {
     let server = server::http(move |req| async move {
         if req.uri() == "/no-refer" {
@@ -255,7 +255,7 @@ fn test_referer_is_not_set_if_disabled() {
         }
     });
 
-    reqwest::Client::builder()
+    nightfly::Client::builder()
         .referer(false)
         .build()
         .unwrap()
@@ -264,7 +264,7 @@ fn test_referer_is_not_set_if_disabled() {
         .unwrap();
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn test_invalid_location_stops_redirect_gh484() {
     let server = server::http(move |_req| async move {
         http::Response::builder()
@@ -276,14 +276,14 @@ fn test_invalid_location_stops_redirect_gh484() {
 
     let url = format!("http://{}/yikes", server.addr());
 
-    let res = reqwest::get(&url).unwrap();
+    let res = nightfly::get(&url).unwrap();
 
     assert_eq!(res.url().as_str(), url);
-    assert_eq!(res.status(), reqwest::StatusCode::FOUND);
+    assert_eq!(res.status(), nightfly::StatusCode::FOUND);
 }
 
 #[cfg(feature = "cookies")]
-#[tokio::test]
+#[lunatic::test]
 fn test_redirect_302_with_set_cookies() {
     let code = 302;
     let server = server::http(move |req| async move {
@@ -304,18 +304,18 @@ fn test_redirect_302_with_set_cookies() {
     let url = format!("http://{}/{}", server.addr(), code);
     let dst = format!("http://{}/{}", server.addr(), "dst");
 
-    let client = reqwest::ClientBuilder::new()
+    let client = nightfly::ClientBuilder::new()
         .cookie_store(true)
         .build()
         .unwrap();
     let res = client.get(&url).send().unwrap();
 
     assert_eq!(res.url().as_str(), dst);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }
 
 #[cfg(feature = "__rustls")]
-#[tokio::test]
+#[lunatic::test]
 #[ignore = "Needs TLS support in the test server"]
 fn test_redirect_https_only_enforced_gh1312() {
     let server = server::http(move |_req| async move {
@@ -328,7 +328,7 @@ fn test_redirect_https_only_enforced_gh1312() {
 
     let url = format!("https://{}/yikes", server.addr());
 
-    let res = reqwest::Client::builder()
+    let res = nightfly::Client::builder()
         .danger_accept_invalid_certs(true)
         .use_rustls_tls()
         .https_only(true)

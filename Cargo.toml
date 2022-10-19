@@ -3,13 +3,13 @@ authors = ["Sean McArthur <sean@seanmonstar.com>"]
 autotests = true 
 categories = ["web-programming::http-client", "wasm"] 
 description = "higher level HTTP client library" 
-documentation = "https://docs.rs/reqwest" 
+documentation = "https://docs.rs/nightfly" 
 edition = "2018" 
 keywords = ["http", "request", "client"] 
 license = "MIT/Apache-2.0" 
-name = "reqwest" 
+name = "nightfly" 
 readme = "README.md" 
-repository = "https://github.com/seanmonstar/reqwest" 
+repository = "https://github.com/seanmonstar/nightfly" 
 version = "0.11.12" # remember to update html_root_url
 
 [package.metadata.docs.rs]
@@ -19,7 +19,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.playground]
 features = [
-  "blocking",
   "cookies",
   "json",
   "multipart",
@@ -48,7 +47,7 @@ http = "0.2"
 http-body = "0.4.5"
 httparse = "1.7.1"
 ipnet = "2.5.0"
-lunatic = "0.11.4"
+lunatic = {path = "../rust-lib"}
 lunatic-log = "0.2"
 mime = "0.3.16"
 percent-encoding = "2.2.0"
@@ -79,20 +78,29 @@ flate2 = {version = "^1.0.24", optional = true}
 ## trust-dns
 trust-dns-resolver = {version = "0.22", optional = true}
 
+[dev-dependencies]
+criterion = {git = "https://github.com/bheisler/criterion.rs", branch = "version-0.4", default-features = false}
+submillisecond = {version = "0.2.0-beta0", features = [
+  "cookies",
+  "json",
+  "logging",
+  "query",
+  "websocket",
+]}# for examples
+
 [[example]]
 name = "blocking"
 path = "examples/blocking.rs"
-required-features = ["blocking"]
 
 [[example]]
 name = "json_dynamic"
 path = "examples/json_dynamic.rs"
-required-features = ["json"]
+# required-features = ["json"]
 
 [[example]]
 name = "json_typed"
 path = "examples/json_typed.rs"
-required-features = ["json"]
+# required-features = ["json"]
 
 [[example]]
 name = "tor_socks"
@@ -110,7 +118,6 @@ path = "examples/simple.rs"
 [[test]]
 name = "blocking"
 path = "tests/blocking.rs"
-required-features = ["blocking"]
 
 [[test]]
 name = "cookie"

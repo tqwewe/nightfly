@@ -1,5 +1,5 @@
 #![deny(warnings)]
-extern crate reqwest;
+extern crate nightfly;
 
 use lunatic::Mailbox;
 
@@ -13,17 +13,18 @@ fn main(_: Mailbox<()>) -> () {
         None => {
             println!("No CLI URL provided, using default.");
             // "https://hyper.rs".into()
-            "http://localhost:3000".into()
+            // "http://localhost:3000".into()
+            "http://eu.httpbin.org/get".into()
         }
     };
 
     eprintln!("Fetching {:?}...", url);
 
-    // reqwest::get() is a convenience function.
+    // nightfly::get() is a convenience function.
     //
-    // In most cases, you should create/build a reqwest::Client and reuse
+    // In most cases, you should create/build a nightfly::Client and reuse
     // it for all requests.
-    let res = reqwest::get(url).unwrap();
+    let res = nightfly::get(url).unwrap();
 
     eprintln!("Response: {:?} {}", res.version(), res.status());
     eprintln!("Headers: {:#?}\n", res.headers());

@@ -1,16 +1,15 @@
 #![cfg(not(target_arch = "wasm32"))]
 mod support;
 use support::*;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[tokio::test]
+#[lunatic::test]
 fn http_upgrade() {
     let server = server::http(move |req| {
         assert_eq!(req.method(), "GET");
         assert_eq!(req.headers()["connection"], "upgrade");
         assert_eq!(req.headers()["upgrade"], "foobar");
 
-        tokio::spawn(async move {
+        lunatic::spawn(async move {
             let mut upgraded = hyper::upgrade::on(req).unwrap();
 
             let mut buf = vec![0; 7];
@@ -30,7 +29,7 @@ fn http_upgrade() {
         }
     });
 
-    let res = reqwest::Client::builder()
+    let res = nightfly::Client::builder()
         .build()
         .unwrap()
         .get(format!("http://{}", server.addr()))

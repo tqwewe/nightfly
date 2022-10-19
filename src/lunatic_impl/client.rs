@@ -535,7 +535,7 @@ impl ClientBuilder {
     /// # Example
     ///
     /// ```rust
-    /// # fn doc() -> Result<(), reqwest::Error> {
+    /// # fn doc() -> Result<(), nightfly::Error> {
     /// // Name your user agent after your app?
     /// static APP_USER_AGENT: &str = concat!(
     ///     env!("CARGO_PKG_NAME"),
@@ -543,7 +543,7 @@ impl ClientBuilder {
     ///     env!("CARGO_PKG_VERSION"),
     /// );
     ///
-    /// let client = reqwest::Client::builder()
+    /// let client = nightfly::Client::builder()
     ///     .user_agent(APP_USER_AGENT)
     ///     .build()?;
     /// let res = client.get("https://www.rust-lang.org").send();
@@ -570,8 +570,8 @@ impl ClientBuilder {
     /// # Example
     ///
     /// ```rust
-    /// use reqwest::header;
-    /// # fn doc() -> Result<(), reqwest::Error> {
+    /// use nightfly::header;
+    /// # fn doc() -> Result<(), nightfly::Error> {
     /// let mut headers = header::HeaderMap::new();
     /// headers.insert("X-MY-HEADER", header::HeaderValue::from_static("value"));
     ///
@@ -581,7 +581,7 @@ impl ClientBuilder {
     /// headers.insert(header::AUTHORIZATION, auth_value);
     ///
     /// // get a client builder
-    /// let client = reqwest::Client::builder()
+    /// let client = nightfly::Client::builder()
     ///     .default_headers(headers)
     ///     .build()?;
     /// let res = client.get("https://www.rust-lang.org").send();
@@ -592,13 +592,13 @@ impl ClientBuilder {
     /// Override the default headers:
     ///
     /// ```rust
-    /// use reqwest::header;
-    /// # fn doc() -> Result<(), reqwest::Error> {
+    /// use nightfly::header;
+    /// # fn doc() -> Result<(), nightfly::Error> {
     /// let mut headers = header::HeaderMap::new();
     /// headers.insert("X-MY-HEADER", header::HeaderValue::from_static("value"));
     ///
     /// // get a client builder
-    /// let client = reqwest::Client::builder()
+    /// let client = nightfly::Client::builder()
     ///     .default_headers(headers)
     ///     .build()?;
     /// let res = client
@@ -833,11 +833,6 @@ impl ClientBuilder {
     /// Set a timeout for only the connect phase of a `Client`.
     ///
     /// Default is `None`.
-    ///
-    /// # Note
-    ///
-    /// This **requires** the futures be executed in a tokio runtime with
-    /// a tokio timer enabled.
     pub fn connect_timeout(mut self, timeout: Duration) -> ClientBuilder {
         self.config.connect_timeout = Some(timeout);
         self
@@ -999,7 +994,7 @@ impl ClientBuilder {
     /// ```
     /// use std::net::IpAddr;
     /// let local_addr = IpAddr::from([12, 4, 1, 8]);
-    /// let client = reqwest::Client::builder()
+    /// let client = nightfly::Client::builder()
     ///     .local_address(local_addr)
     ///     .build().unwrap();
     /// ```
@@ -1226,17 +1221,17 @@ impl ClientBuilder {
 
     /// Use a preconfigured TLS backend.
     ///
-    /// If the passed `Any` argument is not a TLS backend that reqwest
+    /// If the passed `Any` argument is not a TLS backend that nightfly
     /// understands, the `ClientBuilder` will error when calling `build`.
     ///
     /// # Advanced
     ///
     /// This is an advanced option, and can be somewhat brittle. Usage requires
-    /// keeping the preconfigured TLS argument version in sync with reqwest,
+    /// keeping the preconfigured TLS argument version in sync with nightfly,
     /// since version mismatches will result in an "unknown" TLS backend.
     ///
     /// If possible, it's preferable to use the methods on `ClientBuilder`
-    /// to configure reqwest's TLS.
+    /// to configure nightfly's TLS.
     ///
     /// # Optional
     ///
@@ -1361,7 +1356,12 @@ pub fn request_to_vec(
     }
 
     // writing status line
-    request_buffer.extend(format!("{} {} {:?}\r\n", method, uri, version,).as_bytes());
+    let path = if let Some(query) = uri.query() {
+        format!("{}?{}", uri.path(), query)
+    } else {
+        uri.path().to_string()
+    };
+    request_buffer.extend(format!("{} {} {:?}\r\n", method, path, version,).as_bytes());
     // writing headers
     for (key, value) in headers.iter() {
         if let Ok(value) = String::from_utf8(value.as_ref().to_vec()) {
@@ -1492,6 +1492,10 @@ impl Client {
             return Err(error::url_bad_scheme(url));
         }
 
+        if let Some(host) = url.host() {
+            headers.append("Host", HeaderValue::from_str(&host.to_string()).unwrap());
+        }
+
         // insert default headers in the request headers
         // without overwriting already appended headers.
         for (key, value) in &self.inner.headers {
@@ -1520,14 +1524,6 @@ impl Client {
 
         let uri = expect_uri(&url);
 
-        // let (reusable, body) = match body {
-        //     Some(body) => {
-        //         let (reusable, body) = body.try_reuse();
-        //         (Some(reusable), body)
-        //     }
-        //     None => (None, Body::empty()),
-        // };
-
         self.proxy_auth(&uri, &mut headers);
 
         let timeout = timeout.or(self.inner.request_timeout);
@@ -1543,7 +1539,6 @@ impl Client {
         stream.write_all(&mut encoded).unwrap();
 
         let response_buffer = Vec::new();
-        println!("WROTE TO STREAM");
 
         match parse_response(response_buffer, stream.clone(), url) {
             Ok(res) => Ok(res),
@@ -1704,12 +1699,11 @@ struct ClientRef {
 }
 
 impl ClientRef {
-    pub fn ensure_connection(&mut self, uri: Url) -> crate::Result<HttpStream> {
+    pub fn ensure_connection(&mut self, url: Url) -> crate::Result<HttpStream> {
         if let Some(stream) = &self.stream {
             return Ok(stream.clone());
         }
-        println!("GOING TO CONNECT WITH URI {:?}", uri.as_str());
-        HttpStream::connect(format!("{}:{}", uri.host().unwrap(), uri.port().unwrap()))
+        HttpStream::connect(url)
     }
 
     fn fmt_fields(&self, f: &mut fmt::DebugStruct<'_, '_>) {

@@ -1,30 +1,32 @@
-# reqwest
+# nightfly
 
-[![crates.io](https://img.shields.io/crates/v/reqwest.svg)](https://crates.io/crates/reqwest)
-[![Documentation](https://docs.rs/reqwest/badge.svg)](https://docs.rs/reqwest)
-[![MIT/Apache-2 licensed](https://img.shields.io/crates/l/reqwest.svg)](./LICENSE-APACHE)
-[![CI](https://github.com/seanmonstar/reqwest/workflows/CI/badge.svg)](https://github.com/seanmonstar/reqwest/actions?query=workflow%3ACI)
+## Disclaimer
+This project is still highly experimental and therefore not to be used in production
+
+[![crates.io](https://img.shields.io/crates/v/nightfly.svg)](https://crates.io/crates/nightfly)
+[![Documentation](https://docs.rs/nightfly/badge.svg)](https://docs.rs/nightfly)
+[![MIT/Apache-2 licensed](https://img.shields.io/crates/l/nightfly.svg)](./LICENSE-APACHE)
+[![CI](https://github.com/seanmonstar/nightfly/workflows/CI/badge.svg)](https://github.com/seanmonstar/nightfly/actions?query=workflow%3ACI)
 
 An ergonomic, batteries-included HTTP Client for Rust.
 
 - Plain bodies, JSON, urlencoded, multipart
 - Customizable redirect policy
 - HTTP Proxies
-- HTTPS via system-native TLS (or optionally, rustls)
+- HTTPS via lunatic-native TLS
 - Cookie Store
-- WASM
 - [Changelog](CHANGELOG.md)
 
 
 ## Example
 
-This asynchronous example uses [Tokio](https://tokio.rs) and enables some
+This example uses [Lunatic](https://lunatic.rs) and enables some
 optional features, so your `Cargo.toml` could look like this:
 
 ```toml
 [dependencies]
-reqwest = { version = "0.11", features = ["json"] }
-tokio = { version = "1", features = ["full"] }
+nightfly = { version = "0.1.0" }
+lunatic = { version = "0.11" }
 ```
 
 And then the code:
@@ -34,7 +36,7 @@ use std::collections::HashMap;
 
 #[lunatic::main]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let resp = reqwest::get("https://httpbin.org/ip")
+    let resp = nightfly::get("https://httpbin.org/ip")
         
         .json::<HashMap<String, String>>()
         ;
@@ -49,14 +51,14 @@ There is an optional "blocking" client API that can be enabled:
 
 ```toml
 [dependencies]
-reqwest = { version = "0.11", features = ["blocking", "json"] }
+nightfly = { version = "0.11", features = ["blocking", "json"] }
 ```
 
 ```rust,no_run
 use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let resp = reqwest::blocking::get("https://httpbin.org/ip")?
+    let resp = nightfly::blocking::get("https://httpbin.org/ip")?
         .json::<HashMap<String, String>>()?;
     println!("{:#?}", resp);
     Ok(())

@@ -1,33 +1,160 @@
 mod support;
-use support::*;
 
-#[test]
+use http::{HeaderMap, HeaderValue};
+use lunatic::{
+    abstract_process,
+    process::{ProcessRef, StartProcess},
+    spawn_link,
+    supervisor::{Supervisor, SupervisorStrategy},
+    Process, Tag,
+};
+use nightfly::StatusCode;
+use submillisecond::{response::Response as SubmsResponse, router, Application, Json};
+
+fn index() -> &'static str {
+    "Hello"
+}
+
+fn non_utf8_text() -> SubmsResponse {
+    SubmsResponse::builder()
+        .header("Content-Type", "text/plain; charset=gbk")
+        .body(b"\xc4\xe3\xba\xc3".to_vec())
+        .unwrap()
+}
+
+fn ensure_hello(hello: String) -> SubmsResponse {
+    assert_eq!(hello, "Hello".to_string());
+    SubmsResponse::default()
+}
+
+fn empty_response() -> SubmsResponse {
+    SubmsResponse::default()
+}
+
+fn res_400() -> (StatusCode, &'static str) {
+    (StatusCode::BAD_REQUEST, "Resource not found")
+}
+
+fn get_json() -> Json<String> {
+    Json("Hello".to_string())
+}
+
+fn default_headers(headers: HeaderMap) -> SubmsResponse {
+    assert_eq!(
+        headers.get("nightfly-test"),
+        Some(&HeaderValue::from_str("orly").unwrap())
+    );
+    SubmsResponse::default()
+}
+
+fn overwrite_headers(headers: HeaderMap) -> SubmsResponse {
+    assert_eq!(
+        headers.get("authorization"),
+        Some(&HeaderValue::from_str("secret").unwrap())
+    );
+    SubmsResponse::default()
+}
+
+fn appended_headers(headers: HeaderMap) -> SubmsResponse {
+    let mut accepts = headers.get_all("accept").into_iter();
+    assert_eq!(accepts.next().unwrap(), "application/json");
+    assert_eq!(accepts.next().unwrap(), "application/json+hal");
+    assert_eq!(accepts.next(), None);
+    SubmsResponse::default()
+}
+
+fn start_server() -> std::io::Result<()> {
+    Application::new(router! {
+        GET "/text" => index
+        GET "/non_utf8_text" => non_utf8_text
+        GET "/1" => empty_response
+        POST "/2" => ensure_hello
+        GET "/err_400" => res_400
+        GET "/json" => get_json
+        GET "/default_headers" => default_headers
+        GET "/overwrite_headers" => overwrite_headers
+        GET "/4" => appended_headers
+    })
+    .serve(ADDR)
+}
+
+static ADDR: &'static str = "0.0.0.0:3000";
+
+struct ServerSup;
+
+struct ServerProcess(Process<()>);
+
+#[abstract_process]
+impl ServerProcess {
+    #[init]
+    fn init(_: ProcessRef<Self>, _: ()) -> Self {
+        Self(spawn_link!(|| {
+            start_server().unwrap();
+        }))
+    }
+
+    #[terminate]
+    fn terminate(self) {
+        println!("Shutdown process");
+    }
+
+    #[handle_link_trapped]
+    fn handle_link_trapped(&self, _: Tag) {
+        println!("Link trapped");
+    }
+}
+
+impl Supervisor for ServerSup {
+    type Arg = String;
+    type Children = ServerProcess;
+
+    fn init(config: &mut lunatic::supervisor::SupervisorConfig<Self>, name: Self::Arg) {
+        // If a child fails, just restart it.
+        config.set_strategy(SupervisorStrategy::OneForOne);
+        // Start One `ServerProcess`
+        config.children_args(((), Some(name)));
+    }
+}
+
+fn ensure_server() {
+    if let Some(_) = Process::<Process<()>>::lookup("__server__") {
+        return;
+    }
+    ServerSup::start("__server__".to_owned(), None);
+}
+
+#[lunatic::test]
 fn test_response_text() {
-    let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
+    let _ = ensure_server();
 
-    let url = format!("http://{}/text", server.addr());
-    let res = reqwest::blocking::get(&url).unwrap();
+    let url = format!("http://{}/text", ADDR);
+    let res = nightfly::get(&url).unwrap();
+    println!(
+        "RES {:?} = {:?} \n {:?} = {:?} \n {:?} = {:?}",
+        res.url().as_str(),
+        &url,
+        res.status(),
+        nightfly::StatusCode::OK,
+        res.content_length(),
+        Some(5)
+    );
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
     assert_eq!(res.content_length(), Some(5));
 
     let body = res.text().unwrap();
     assert_eq!(b"Hello", body.as_bytes());
 }
 
-#[test]
+#[lunatic::test]
 fn test_response_non_utf_8_text() {
-    let server = server::http(move |_req| async {
-        http::Response::builder()
-            .header("content-type", "text/plain; charset=gbk")
-            .body(b"\xc4\xe3\xba\xc3"[..].into())
-            .unwrap()
-    });
+    // maybe wait for server to spawn
+    let _ = ensure_server();
 
-    let url = format!("http://{}/text", server.addr());
-    let res = reqwest::blocking::get(&url).unwrap();
+    let url = format!("http://{}/non_utf8_text", ADDR);
+    let res = nightfly::get(&url).unwrap();
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
     assert_eq!(res.content_length(), Some(4));
 
     let body = res.text().unwrap();
@@ -35,184 +162,154 @@ fn test_response_non_utf_8_text() {
     assert_eq!(b"\xe4\xbd\xa0\xe5\xa5\xbd", body.as_bytes()); // Now it's utf-8
 }
 
-#[test]
-#[cfg(feature = "json")]
+#[lunatic::test]
+// #[cfg(feature = "json")]
 fn test_response_json() {
-    let server = server::http(move |_req| async { http::Response::new("\"Hello\"".into()) });
+    // maybe wait for server to spawn
+    let _ = ensure_server();
 
-    let url = format!("http://{}/json", server.addr());
-    let res = reqwest::blocking::get(&url).unwrap();
+    let url = format!("http://{}/json", ADDR);
+    let res = nightfly::get(&url).unwrap();
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
     assert_eq!(res.content_length(), Some(7));
 
     let body = res.json::<String>().unwrap();
     assert_eq!("Hello", body);
 }
 
-#[test]
-fn test_response_copy_to() {
-    let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
-
-    let url = format!("http://{}/1", server.addr());
-    let mut res = reqwest::blocking::get(&url).unwrap();
-    assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
-
-    let mut dst = Vec::new();
-    res.copy_to(&mut dst).unwrap();
-    assert_eq!(dst, b"Hello");
-}
-
-#[test]
+#[lunatic::test]
 fn test_get() {
-    let server = server::http(move |_req| async { http::Response::default() });
+    // maybe wait for server to spawn
+    let _ = ensure_server();
 
-    let url = format!("http://{}/1", server.addr());
-    let res = reqwest::blocking::get(&url).unwrap();
+    let url = format!("http://{}/1", ADDR);
+    let res = nightfly::get(&url).unwrap();
 
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
-    assert_eq!(res.remote_addr(), Some(server.addr()));
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
+    // assert_eq!(res.remote_addr(), Some(ADDR));
 
     assert_eq!(res.text().unwrap().len(), 0)
 }
 
-#[test]
+#[lunatic::test]
 fn test_post() {
-    let server = server::http(move |req| async move {
-        assert_eq!(req.method(), "POST");
-        assert_eq!(req.headers()["content-length"], "5");
+    // maybe wait for server to spawn
+    let _ = ensure_server();
 
-        let data = hyper::body::to_bytes(req.into_body()).unwrap();
-        assert_eq!(&*data, b"Hello");
-
-        http::Response::default()
-    });
-
-    let url = format!("http://{}/2", server.addr());
-    let res = reqwest::blocking::Client::new()
+    let url = format!("http://{}/2", ADDR);
+    let res = nightfly::Client::new()
         .post(&url)
-        .body("Hello")
+        .text("Hello")
         .send()
         .unwrap();
 
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }
 
-#[test]
-fn test_post_form() {
-    let server = server::http(move |req| async move {
-        assert_eq!(req.method(), "POST");
-        assert_eq!(req.headers()["content-length"], "24");
-        assert_eq!(
-            req.headers()["content-type"],
-            "application/x-www-form-urlencoded"
-        );
+// #[lunatic::test]
+// fn test_post_form() {
+//     let server = server::http(move |req| async move {
+//         assert_eq!(req.method(), "POST");
+//         assert_eq!(req.headers()["content-length"], "24");
+//         assert_eq!(
+//             req.headers()["content-type"],
+//             "application/x-www-form-urlencoded"
+//         );
 
-        let data = hyper::body::to_bytes(req.into_body()).unwrap();
-        assert_eq!(&*data, b"hello=world&sean=monstar");
+//         let data = hyper::body::to_bytes(req.into_body()).unwrap();
+//         assert_eq!(&*data, b"hello=world&sean=monstar");
 
-        http::Response::default()
-    });
+//         http::Response::default()
+//     });
 
-    let form = &[("hello", "world"), ("sean", "monstar")];
+//     let form = &[("hello", "world"), ("sean", "monstar")];
 
-    let url = format!("http://{}/form", server.addr());
-    let res = reqwest::blocking::Client::new()
-        .post(&url)
-        .form(form)
-        .send()
-        .expect("request send");
+//     let url = format!("http://{}/form", ADDR);
+//     let res = nightfly::Client::new()
+//         .post(&url)
+//         .form(form)
+//         .send()
+//         .expect("request send");
 
-    assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
-}
+//     assert_eq!(res.url().as_str(), &url);
+//     assert_eq!(res.status(), nightfly::StatusCode::OK);
+// }
 
 /// Calling `Response::error_for_status`` on a response with status in 4xx
 /// returns a error.
-#[test]
+#[lunatic::test]
 fn test_error_for_status_4xx() {
-    let server = server::http(move |_req| async {
-        http::Response::builder()
-            .status(400)
-            .body(Default::default())
-            .unwrap()
-    });
+    // maybe wait for server to spawn
+    let _ = ensure_server();
 
-    let url = format!("http://{}/1", server.addr());
-    let res = reqwest::blocking::get(&url).unwrap();
+    let url = format!("http://{}/err_400", ADDR);
+    let res = nightfly::get(&url).unwrap();
 
     let err = res.error_for_status().unwrap_err();
     assert!(err.is_status());
-    assert_eq!(err.status(), Some(reqwest::StatusCode::BAD_REQUEST));
+    assert_eq!(err.status(), Some(nightfly::StatusCode::BAD_REQUEST));
 }
 
 /// Calling `Response::error_for_status`` on a response with status in 5xx
 /// returns a error.
-#[test]
+#[lunatic::test]
 fn test_error_for_status_5xx() {
-    let server = server::http(move |_req| async {
-        http::Response::builder()
-            .status(500)
-            .body(Default::default())
-            .unwrap()
-    });
+    // maybe wait for server to spawn
+    let _ = ensure_server();
 
-    let url = format!("http://{}/1", server.addr());
-    let res = reqwest::blocking::get(&url).unwrap();
+    let url = format!("http://{}/2", ADDR);
+    let res = nightfly::Client::new()
+        .post(&url)
+        .text("invalid string")
+        .send()
+        .unwrap();
 
     let err = res.error_for_status().unwrap_err();
     assert!(err.is_status());
     assert_eq!(
         err.status(),
-        Some(reqwest::StatusCode::INTERNAL_SERVER_ERROR)
+        Some(nightfly::StatusCode::INTERNAL_SERVER_ERROR)
     );
 }
 
-#[test]
+#[lunatic::test]
 fn test_default_headers() {
-    let server = server::http(move |req| async move {
-        assert_eq!(req.headers()["reqwest-test"], "orly");
-        http::Response::default()
-    });
+    // maybe wait for server to spawn
+    let _ = ensure_server();
 
     let mut headers = http::HeaderMap::with_capacity(1);
-    headers.insert("reqwest-test", "orly".parse().unwrap());
-    let client = reqwest::blocking::Client::builder()
+    headers.insert("nightfly-test", "orly".parse().unwrap());
+    let client = nightfly::Client::builder()
         .default_headers(headers)
         .build()
         .unwrap();
 
-    let url = format!("http://{}/1", server.addr());
+    let url = format!("http://{}/default_headers", ADDR);
     let res = client.get(&url).send().unwrap();
 
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }
 
-#[test]
+#[lunatic::test]
 fn test_override_default_headers() {
-    let server = server::http(move |req| {
-        async move {
-            // not 'iamatoken'
-            assert_eq!(req.headers()[&http::header::AUTHORIZATION], "secret");
-            http::Response::default()
-        }
-    });
+    // maybe wait for server to spawn
+    let _ = ensure_server();
 
     let mut headers = http::HeaderMap::with_capacity(1);
     headers.insert(
         http::header::AUTHORIZATION,
         http::header::HeaderValue::from_static("iamatoken"),
     );
-    let client = reqwest::blocking::Client::builder()
+    let client = nightfly::Client::builder()
         .default_headers(headers)
         .build()
         .unwrap();
 
-    let url = format!("http://{}/3", server.addr());
+    let url = format!("http://{}/overwrite_headers", ADDR);
     let res = client
         .get(&url)
         .header(
@@ -223,23 +320,17 @@ fn test_override_default_headers() {
         .unwrap();
 
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }
 
-#[test]
+#[lunatic::test]
 fn test_appended_headers_not_overwritten() {
-    let server = server::http(move |req| async move {
-        let mut accepts = req.headers().get_all("accept").into_iter();
-        assert_eq!(accepts.next().unwrap(), "application/json");
-        assert_eq!(accepts.next().unwrap(), "application/json+hal");
-        assert_eq!(accepts.next(), None);
+    // maybe wait for server to spawn
+    let _ = ensure_server();
 
-        http::Response::default()
-    });
+    let client = nightfly::Client::new();
 
-    let client = reqwest::blocking::Client::new();
-
-    let url = format!("http://{}/4", server.addr());
+    let url = format!("http://{}/4", ADDR);
     let res = client
         .get(&url)
         .header(header::ACCEPT, "application/json")
@@ -248,21 +339,21 @@ fn test_appended_headers_not_overwritten() {
         .unwrap();
 
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 
     // make sure this also works with default headers
-    use reqwest::header;
+    use nightfly::header;
     let mut headers = header::HeaderMap::with_capacity(1);
     headers.insert(
         header::ACCEPT,
         header::HeaderValue::from_static("text/html"),
     );
-    let client = reqwest::blocking::Client::builder()
+    let client = nightfly::Client::builder()
         .default_headers(headers)
         .build()
         .unwrap();
 
-    let url = format!("http://{}/4", server.addr());
+    let url = format!("http://{}/4", ADDR);
     let res = client
         .get(&url)
         .header(header::ACCEPT, "application/json")
@@ -271,54 +362,37 @@ fn test_appended_headers_not_overwritten() {
         .unwrap();
 
     assert_eq!(res.url().as_str(), &url);
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), nightfly::StatusCode::OK);
 }
 
-#[cfg_attr(not(debug_assertions), ignore)]
-#[test]
-#[should_panic]
-fn test_blocking_inside_a_runtime() {
-    let server = server::http(move |_req| async { http::Response::new("Hello".into()) });
+// #[cfg(feature = "default-tls")]
+// #[lunatic::test]
+// fn test_allowed_methods_blocking() {
+//     let resp = nightfly::Client::builder()
+//         .https_only(true)
+//         .build()
+//         .expect("client builder")
+//         .get("https://google.com")
+//         .send();
 
-    let url = format!("http://{}/text", server.addr());
+//     assert_eq!(resp.is_err(), false);
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .expect("new rt");
+//     let resp = nightfly::Client::builder()
+//         .https_only(true)
+//         .build()
+//         .expect("client builder")
+//         .get("http://google.com")
+//         .send();
 
-    rt.block_on(async move {
-        let _should_panic = reqwest::blocking::get(&url);
-    });
-}
+//     assert_eq!(resp.is_err(), true);
+// }
 
-#[cfg(feature = "default-tls")]
-#[test]
-fn test_allowed_methods_blocking() {
-    let resp = reqwest::blocking::Client::builder()
-        .https_only(true)
-        .build()
-        .expect("client builder")
-        .get("https://google.com")
-        .send();
-
-    assert_eq!(resp.is_err(), false);
-
-    let resp = reqwest::blocking::Client::builder()
-        .https_only(true)
-        .build()
-        .expect("client builder")
-        .get("http://google.com")
-        .send();
-
-    assert_eq!(resp.is_err(), true);
-}
-
-/// Test that a [`reqwest::blocking::Body`] can be created from [`bytes::Bytes`].
-#[test]
+/// Test that a [`nightfly::Body`] can be created from [`bytes::Bytes`].
+#[lunatic::test]
 fn test_body_from_bytes() {
     let body = "abc";
     // No external calls are needed. Only the request building is tested.
-    let request = reqwest::blocking::Client::builder()
+    let request = nightfly::Client::builder()
         .build()
         .expect("Could not build the client")
         .put("https://google.com")
@@ -326,5 +400,6 @@ fn test_body_from_bytes() {
         .build()
         .expect("Invalid body");
 
-    assert_eq!(request.body().unwrap().as_bytes(), Some(body.as_bytes()));
+    let inner = request.body().unwrap().clone().inner();
+    assert_eq!(&inner[..], body.as_bytes());
 }

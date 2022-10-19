@@ -350,20 +350,16 @@ pub(crate) fn parse_response(
 ) -> ResponseResult {
     let mut buffer = [0_u8; REQUEST_BUFFER_SIZE];
     let mut headers = [EMPTY_HEADER; MAX_HEADERS];
-    println!("STARTING PARSE CYCLE");
 
     // Loop until at least one complete response is read.
     let (response_raw, offset) = loop {
-        // println!("STARTING PARSE from buf {:?}", offset);
         // In case of pipelined responses the `response_buffer` is going to come
         // prefilled with some data, and we should attempt to parse it into a response
         // before we decide to read more from `TcpStream`.
         let mut response_raw = httparse::Response::new(&mut headers);
-        println!("ABOUT TO PARSE");
         match response_raw.parse(&response_buffer) {
             Ok(state) => match state {
                 Status::Complete(offset) => {
-                    println!("GOT COMPLETE FOR RESPONSE - breaking {:?}", offset);
                     // Continue outside the loop.
                     break (response_raw, offset);
                 }
@@ -378,7 +374,6 @@ pub(crate) fn parse_response(
                         }
                     }
                     let n = n.unwrap();
-                    println!("GOT PARTIAL FOR RESPONSE {:?} | {:?}", n, &buffer[..n]);
                     // Invalidate references in `headers` that could point to the previous
                     // `response_buffer` before extending it.
                     headers = [EMPTY_HEADER; MAX_HEADERS];
@@ -390,11 +385,15 @@ pub(crate) fn parse_response(
                 }
             },
             Err(err) => {
-                println!("GOT ERR");
                 return Err(ParseResponseError::HttpParseError(err));
             }
         }
     };
+
+    lunatic_log::debug!(
+        "Received RAW Response {:?}",
+        String::from_utf8(response_buffer.clone())
+    );
 
     // At this point one full response header is available, but the body (if it
     // exists) might not be fully loaded yet.
@@ -427,12 +426,6 @@ pub(crate) fn parse_response(
         body: vec![],
         url,
     };
-    println!(
-        "BUILT AN HTTP RESPONSE len: {:?} - {} | {:?}",
-        content_lengt,
-        response_buffer[offset..].len(),
-        res
-    );
     if let Some(content_lengt) = content_lengt {
         #[allow(clippy::comparison_chain)]
         if response_buffer[offset..].len() == content_lengt {
@@ -450,7 +443,6 @@ pub(crate) fn parse_response(
         //         Vec::from(&response_buffer[offset + content_lengt..])
         } else {
             // Read the rest from TCP stream to form a full response
-            println!("ELSE");
             let rest = content_lengt - response_buffer[offset..].len();
             let mut buffer = vec![0u8; rest];
             stream.read_exact(&mut buffer).unwrap();

@@ -1,7 +1,7 @@
 mod support;
 use support::*;
 
-#[tokio::test]
+#[lunatic::test]
 fn cookie_response_accessor() {
     let server = server::http(move |_req| async move {
         http::Response::builder()
@@ -21,7 +21,7 @@ fn cookie_response_accessor() {
             .unwrap()
     });
 
-    let client = reqwest::Client::new();
+    let client = nightfly::Client::new();
 
     let url = format!("http://{}/", server.addr());
     let res = client.get(&url).send().unwrap();
@@ -71,7 +71,7 @@ fn cookie_response_accessor() {
     assert!(cookies[8].same_site_strict());
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn cookie_store_simple() {
     let server = server::http(move |req| async move {
         if req.uri() == "/2" {
@@ -83,7 +83,7 @@ fn cookie_store_simple() {
             .unwrap()
     });
 
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .cookie_store(true)
         .build()
         .unwrap();
@@ -95,7 +95,7 @@ fn cookie_store_simple() {
     client.get(&url).send().unwrap();
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn cookie_store_overwrite_existing() {
     let server = server::http(move |req| async move {
         if req.uri() == "/" {
@@ -116,7 +116,7 @@ fn cookie_store_overwrite_existing() {
         }
     });
 
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .cookie_store(true)
         .build()
         .unwrap();
@@ -131,7 +131,7 @@ fn cookie_store_overwrite_existing() {
     client.get(&url).send().unwrap();
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn cookie_store_max_age() {
     let server = server::http(move |req| async move {
         assert_eq!(req.headers().get("cookie"), None);
@@ -141,7 +141,7 @@ fn cookie_store_max_age() {
             .unwrap()
     });
 
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .cookie_store(true)
         .build()
         .unwrap();
@@ -150,7 +150,7 @@ fn cookie_store_max_age() {
     client.get(&url).send().unwrap();
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn cookie_store_expires() {
     let server = server::http(move |req| async move {
         assert_eq!(req.headers().get("cookie"), None);
@@ -163,7 +163,7 @@ fn cookie_store_expires() {
             .unwrap()
     });
 
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .cookie_store(true)
         .build()
         .unwrap();
@@ -173,7 +173,7 @@ fn cookie_store_expires() {
     client.get(&url).send().unwrap();
 }
 
-#[tokio::test]
+#[lunatic::test]
 fn cookie_store_path() {
     let server = server::http(move |req| async move {
         if req.uri() == "/" {
@@ -189,7 +189,7 @@ fn cookie_store_path() {
         }
     });
 
-    let client = reqwest::Client::builder()
+    let client = nightfly::Client::builder()
         .cookie_store(true)
         .build()
         .unwrap();

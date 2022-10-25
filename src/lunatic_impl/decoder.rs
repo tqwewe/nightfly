@@ -16,6 +16,7 @@ use http::HeaderMap;
 
 use httparse::{Status, EMPTY_HEADER};
 use lunatic::net::TcpStream;
+use thiserror::Error;
 #[cfg(any(feature = "gzip", feature = "brotli", feature = "deflate"))]
 use tokio_util::codec::{BytesCodec, FramedRead};
 #[cfg(any(feature = "gzip", feature = "brotli", feature = "deflate"))]
@@ -334,13 +335,22 @@ const MAX_HEADERS: usize = 128;
 /// The result of parsing a response from a buffer.
 type ResponseResult = Result<HttpResponse, ParseResponseError>;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum ParseResponseError {
+    #[error("tcp stream closed")]
     TcpStreamClosed,
+    #[error("tcp stream closed without data")]
     TcpStreamClosedWithoutData,
+    #[error("http parse error: {0}")]
     HttpParseError(httparse::Error),
+    #[error("response too large")]
     ResponseTooLarge,
+    #[error("unknown code")]
     UnknownCode,
+    #[error("invalid chunk size")]
+    InvalidChunkSize,
+    #[error("invalid chunk separator")]
+    MissingChunkSeparator,
 }
 
 pub(crate) fn parse_response(
@@ -405,18 +415,26 @@ pub(crate) fn parse_response(
         }
     };
     let response = http::Response::builder().status(status_code);
-    let mut content_lengt = None;
     let response = response_raw
         .headers
         .iter()
         .fold(response, |response, header| {
-            if header.name.to_lowercase() == "content-length" {
-                let value_string = std::str::from_utf8(header.value).unwrap();
-                let length = value_string.parse::<usize>().unwrap();
-                content_lengt = Some(length);
-            }
             response.header(header.name, header.value)
         });
+    let content_length = response
+        .headers_ref()
+        .and_then(|headers| headers.get("content-length"))
+        .and_then(|content_length| {
+            std::str::from_utf8(content_length.as_bytes())
+                .ok()?
+                .parse::<usize>()
+                .ok()
+        });
+    let chunked = response
+        .headers_ref()
+        .and_then(|headers| headers.get("transfer-encoding"))
+        .map(|transfer_encoding| transfer_encoding.as_bytes() == b"chunked")
+        .unwrap_or(false);
     // If content-length exists, response has a body
     let res = response.body(vec![0u8; 0]).unwrap();
     let mut res = HttpResponse {
@@ -426,40 +444,61 @@ pub(crate) fn parse_response(
         body: vec![],
         url,
     };
-    if let Some(content_lengt) = content_lengt {
-        #[allow(clippy::comparison_chain)]
-        if response_buffer[offset..].len() == content_lengt {
-            // Complete content is captured from the response w/o trailing pipelined
-            // responses.
-            res.body = response_buffer[offset..].to_owned();
-            return Ok(res);
+    if chunked {
+        let mut chunk_offset = offset;
+        let mut body = Vec::new();
+        loop {
+            let chunk = httparse::parse_chunk_size(&response_buffer[chunk_offset..]);
+            match chunk {
+                Ok(Status::Complete((idx, size))) => {
+                    if size == 0 && response_buffer[chunk_offset + idx..].starts_with(b"\r\n") {
+                        res.body = body;
+                        return Ok(res);
+                    }
 
-        // } else if response_buffer[offset..].len() > content_lengt {
-        //     // Complete content is captured from the response with trailing pipelined
-        //     // responses.
-        //         response
-        //             .body(Body::from_slice(&response_buffer[offset..]))
-        //             .unwrap(),
-        //         Vec::from(&response_buffer[offset + content_lengt..])
-        } else {
-            // Read the rest from TCP stream to form a full response
-            let rest = content_lengt - response_buffer[offset..].len();
-            let mut buffer = vec![0u8; rest];
-            stream.read_exact(&mut buffer).unwrap();
-            response_buffer.extend(&buffer);
-            res.body = response_buffer[offset..].to_owned();
-            return Ok(res);
+                    let missing_bytes = (size as usize)
+                        .saturating_sub(response_buffer.len() - idx - chunk_offset - 2);
+                    if missing_bytes > 0 {
+                        let mut buf = vec![0u8; missing_bytes];
+                        let n = stream.read(&mut buf).unwrap();
+                        response_buffer.extend(&buf[..n]);
+                        continue;
+                    }
+
+                    let chunk =
+                        &response_buffer[chunk_offset + idx..chunk_offset + idx + size as usize];
+                    chunk_offset += idx + size as usize + 2;
+                    body.extend(chunk);
+                }
+                Ok(Status::Partial) => {
+                    let mut buf = vec![0u8; REQUEST_BUFFER_SIZE];
+                    let n = stream.read(&mut buf).unwrap();
+                    response_buffer.extend(&buf[..n]);
+                }
+                Err(_) => {
+                    return Err(ParseResponseError::InvalidChunkSize);
+                }
+            }
         }
     } else {
-        // If the offset points to the end of `responses_buffer` we have a full response,
-        // w/o a trailing pipelined response.
-        if response_buffer[offset..].is_empty() {
-            return Ok(res);
-        } else {
-            // PipelinedResponses::from_pipeline(
-            return Ok(res);
-            //     Vec::from(&response_buffer[offset..]),
-            // )
+        match content_length {
+            Some(content_length) => {
+                if response_buffer[offset..].len() == content_length {
+                    // Complete content is captured from the response w/o trailing pipelined
+                    // responses.
+                    res.body = response_buffer[offset..].to_owned();
+                    Ok(res)
+                } else {
+                    // Read the rest from TCP stream to form a full response
+                    let rest = content_length - response_buffer[offset..].len();
+                    let mut buffer = vec![0u8; rest];
+                    stream.read_exact(&mut buffer).unwrap();
+                    response_buffer.extend(&buffer);
+                    res.body = response_buffer[offset..].to_owned();
+                    Ok(res)
+                }
+            }
+            None => Ok(res),
         }
     }
 }

@@ -1542,7 +1542,7 @@ impl Client {
 
         match parse_response(response_buffer, stream.clone(), url) {
             Ok(res) => Ok(res),
-            Err(e) => unimplemented!(),
+            Err(err) => Err(crate::Error::new(error::Kind::Decode, Some(err))),
         }
     }
 

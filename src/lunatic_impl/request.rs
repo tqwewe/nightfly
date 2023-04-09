@@ -252,7 +252,10 @@ impl RequestBuilder {
     {
         let mut header_value = b"Basic ".to_vec();
         {
-            let mut encoder = Base64Encoder::new(&mut header_value, base64::STANDARD);
+            let mut encoder = Base64Encoder::new(
+                &mut header_value,
+                &base64::engine::general_purpose::STANDARD,
+            );
             // The unwraps here are fine because Vec::write* is infallible.
             write!(encoder, "{}:", username).unwrap();
             if let Some(password) = password {
